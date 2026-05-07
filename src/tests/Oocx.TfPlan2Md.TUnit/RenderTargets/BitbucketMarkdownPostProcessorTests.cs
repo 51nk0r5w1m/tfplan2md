@@ -83,4 +83,52 @@ public class BitbucketMarkdownPostProcessorTests
 
         await Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Verifies a realistic report fragment keeps tables, code fences, findings, and debug content while removing unsupported HTML.
+    /// </summary>
+    [Test]
+    public async Task Process_WithRealisticReportFragment_PreservesMarkdownAndRemovesUnsupportedHtml()
+    {
+        var markdown = """
+            # Terraform Plan Report
+
+            | Action | Count |
+            | ------ | ----- |
+            | ➕ Add | 1 |
+
+            <details><summary>### azurerm_storage_account.example</summary><br>
+
+            | Attribute | Before | After |
+            | --------- | ------ | ----- |
+            | `name` | <code>old</code> | <code>new</code> |
+
+            <pre><code>- allow_http = true&lt;br/&gt;+ allow_https = true</code></pre>
+
+            <b>Checkov CKV_AZURE_1</b><br/>Storage account should use secure transfer.
+            </details>
+
+            <details><summary>🐛 Debug Information</summary><br>
+            Renderer: <code>DefaultResourceRenderer</code>
+            </details>
+            """;
+
+        var result = BitbucketMarkdownPostProcessor.Process(markdown);
+
+        result.Should().Contain("| Action | Count |");
+        result.Should().Contain("### azurerm_storage_account.example");
+        result.Should().Contain("`name`");
+        result.Should().Contain("`old`");
+        result.Should().Contain("```\n- allow_http = true\n+ allow_https = true\n```");
+        result.Should().Contain("**Checkov CKV_AZURE_1** / Storage account should use secure transfer.");
+        result.Should().Contain("🐛 Debug Information");
+        result.Should().Contain("`DefaultResourceRenderer`");
+        result.Should().NotContain("<details");
+        result.Should().NotContain("<summary>");
+        result.Should().NotContain("<code");
+        result.Should().NotContain("<pre");
+        result.Should().NotContain("<b>");
+
+        await Task.CompletedTask;
+    }
 }

@@ -12,11 +12,11 @@
 
 tfplan2md is a CLI tool that converts Terraform plan JSON files into human-readable Markdown reports. The tool addresses a critical pain point in DevOps workflows: reviewing infrastructure changes in pull requests.
 
-**Primary Target Environment:** GitHub Pull Request comments and Azure DevOps Pull Request comments. All markdown output must render correctly in both platforms.
+**Primary Target Environment:** GitHub Pull Request comments, Azure DevOps Pull Request comments, and Bitbucket Cloud Pull Request comments. All markdown output must render correctly for the selected render target.
 
 **Key Requirements:**
 - Parse Terraform plan JSON (`terraform show -json` output)
-- Generate clean, readable Markdown reports compatible with GitHub and Azure DevOps
+- Generate clean, readable Markdown reports compatible with GitHub, Azure DevOps, and Bitbucket
 - Handle sensitive values securely (masking by default)
 - Group resources by module with proper hierarchy
 - Provide semantic diffs for complex resources (firewall rules, NSG rules)
@@ -38,7 +38,7 @@ tfplan2md is a CLI tool that converts Terraform plan JSON files into human-reada
 
 | Role | Expectations |
 |------|--------------|
-| **DevOps Engineers** | Easy integration with CI/CD pipelines; reliable markdown rendering in GitHub and Azure DevOps PR comments |
+| **DevOps Engineers** | Easy integration with CI/CD pipelines; reliable markdown rendering in GitHub, Azure DevOps, and Bitbucket PR comments |
 | **Infrastructure Teams** | Clear visibility of Terraform changes in PR reviews; semantic diffs for complex resources |
 | **Security Reviewers** | Sensitive values masked; audit trail of infrastructure changes visible in PRs |
 | **Project Maintainer** | Modern codebase; comprehensive testing; AI-assisted development workflow |
@@ -72,10 +72,10 @@ tfplan2md is a CLI tool that converts Terraform plan JSON files into human-reada
 | Convention | Background |
 |------------|------------|
 | **Semantic Versioning** | MAJOR.MINOR.PATCH versioning with Conventional Commits |
-| **Markdown Quality** | All output validated with markdownlint-cli2; must be compatible with GitHub and Azure DevOps PR comments |
+| **Markdown Quality** | All output validated with markdownlint-cli2; must be compatible with GitHub, Azure DevOps, and Bitbucket PR comments |
 | **Code Style** | Enforced via .editorconfig and dotnet format; see docs/commenting-guidelines.md for comprehensive style guide |
 | **XML Documentation** | All members must have XML doc comments (including private members) |
-| **Target Platforms** | GitHub Pull Request comments and Azure DevOps Pull Request comments are the primary rendering targets |
+| **Target Platforms** | GitHub Pull Request comments, Azure DevOps Pull Request comments, and Bitbucket Cloud Pull Request comments are the primary rendering targets |
 
 ---
 
@@ -92,7 +92,7 @@ flowchart TD
     
     User[👤 DevOps Engineer<br/>User]
     CLI[tfplan2md CLI<br/><br/>• Parse Terraform JSON<br/>• Build Report Model<br/>• Render Markdown<br/>• Apply Templates]
-    Dest[📝 GitHub / Azure DevOps PR<br/>Destination]
+    Dest[📝 GitHub / Azure DevOps / Bitbucket PR<br/>Destination]
     
     User -->|terraform show -json plan.tfplan| CLI
     CLI -->|markdown report| Dest
@@ -107,7 +107,7 @@ flowchart TD
 | Interface | Description |
 |-----------|-------------|
 | **Input: Terraform Plan JSON** | Standard Terraform plan format from `terraform show -json` |
-| **Output: Markdown Report** | Markdown optimized for GitHub and Azure DevOps PR comments; includes tables, collapsible sections, emoji |
+| **Output: Markdown Report** | Markdown optimized for GitHub, Azure DevOps, and Bitbucket PR comments; includes tables, platform-safe sections, and emoji |
 | **Principal Mapping: JSON** | Optional Azure principal ID to name mapping file |
 
 ### 3.2 Technical Context
@@ -121,7 +121,7 @@ flowchart LR
     
     TF["📦 Terraform Plan<br/>(in CI/CD Pipeline)"]
     Docker["🐳 oocx/tfplan2md<br/>Docker Container"]
-    Output["📝 PR Comment / File<br/>(GitHub / Azure DevOps)"]
+    Output["📝 PR Comment / File<br/>(GitHub / Azure DevOps / Bitbucket)"]
     
     TF -->|JSON| Docker
     Docker -->|Markdown| Output
@@ -461,7 +461,7 @@ flowchart LR
 | `ResourceChangeModel` | Single resource change for rendering; includes precomputed summaries, child resources, code analysis findings, import/move info, Actions (inline action invocations) |
 | `AttributeChangeModel` | Single attribute change |
 | `SummaryModel` | Aggregated statistics (count by action, breakdown by type) |
-| `MarkdownRenderer` | Orchestrate C# rendering pipeline; validate output is compatible with GitHub and Azure DevOps |
+| `MarkdownRenderer` | Orchestrate C# rendering pipeline; validate output is compatible with GitHub, Azure DevOps, and Bitbucket |
 | `ReportRenderer` | Top-level renderer that calls `HeaderRenderer`, `SummaryRenderer`, and per-resource renderers; also renders drift, relevant-attributes, and other-actions sections |
 | `ResourceRendererRegistry` | Dispatch resource types to provider-registered `IResourceRenderer` implementations |
 | `DefaultResourceRenderer` | Fallback renderer for unmapped resource types; renders inline `🎬 Actions` block when resource has action invocations |
@@ -892,7 +892,7 @@ The Bitbucket target reuses the simple diff formatter and applies a final markdo
 
 **Design Rationale:**
 
-GitHub and Azure DevOps have different markdown rendering capabilities:
+GitHub, Azure DevOps, and Bitbucket have different markdown rendering capabilities:
 - **GitHub**: No strikethrough support in code blocks → use separate before/after blocks
 - **Azure DevOps**: Full HTML support in markdown → use inline strikethrough for compact diffs
 
@@ -1318,7 +1318,7 @@ graph TB
    - Convert newlines to `<br/>` tags
    - Balance HTML tags (`<details>`, `<summary>`)
    - Proper heading hierarchy (H1 for title, H2 for sections, H3 for modules, H4 for resources)
-   - Ensure compatibility with both GitHub and Azure DevOps markdown renderers
+   - Ensure compatibility with GitHub, Azure DevOps, and Bitbucket markdown renderers
 
 2. **Test Time:**
    - Parse all tables with Markdig
@@ -1332,7 +1332,7 @@ graph TB
    - Fail build if markdown is invalid
 
 4. **UAT Time:**
-   - Post markdown to real GitHub and Azure DevOps PR comments (primary target platforms)
+   - Post markdown to real GitHub, Azure DevOps, and Bitbucket PR comments (primary target platforms)
    - Manual review of rendering in both environments
    - Validate compatibility with both platforms' markdown parsers
 

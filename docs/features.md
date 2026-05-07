@@ -218,6 +218,99 @@ Both templates include:
 - Responsive HTML5 structure
 - Platform-approximating CSS styles
 - Highlight.js integration for syntax highlighting (via CDN)
+
+## Bitbucket Pipelines and Enterprise CI/CD
+
+**Status:** ✅ Implemented
+
+tfplan2md supports Bitbucket Cloud PR comment rendering through the `--render-target bitbucket` option and provides an enterprise Bitbucket Pipelines guide at [enterprise-bitbucket-pipelines.md](enterprise-bitbucket-pipelines.md).
+
+### Bitbucket Render Target
+
+The Bitbucket render target produces markdown-only output suitable for Bitbucket PR comments:
+
+- Converts HTML `<details>` and `<summary>` wrappers into plain markdown sections
+- Converts HTML code blocks and inline code into markdown fences/spans
+- Removes raw HTML tags that Bitbucket comments do not support reliably
+- Uses simple diff formatting rather than inline styled HTML
+
+### Bitbucket PR Comment Helper
+
+The repository includes a Python helper script, `scripts/bitbucket-pr-comment.py`, for Bitbucket Pipelines. It:
+
+- Creates or updates a single bot-owned PR comment using a hidden marker
+- Uses `BITBUCKET_STEP_OIDC_TOKEN` when `oidc: true` is enabled on the pipeline step
+- Keeps normal-sized reports inline in the PR comment
+- Falls back to a short comment with an HTML artifact link when a report exceeds the configured size limit
+- Reads Bitbucket Pipelines context from `BITBUCKET_WORKSPACE`, `BITBUCKET_REPO_SLUG`, and `BITBUCKET_PR_ID`
+
+Fallback comments include a link like:
+
+```html
+<a href="https://bitbucket.org/example/repo/pipelines/results/123">tfplan2md report artifact</a>
+```
+
+If a Bitbucket Cloud REST API tenant cannot accept the Bitbucket step OIDC token directly, enterprises should route comment creation through an internal OIDC-aware broker or API gateway rather than hardcoding long-lived credentials in pipeline YAML.
+
+### Custom Policy Rules
+
+The Python helper `scripts/tfplan2md-policy.py` evaluates enterprise policy rules before reports are posted. For example, teams can allow Terraform changes by a specific actor only when the pull request targets `develop`.
+
+### Enterprise Guidance
+
+The enterprise guide covers:
+
+- Docker-based and binary-based Bitbucket Pipelines examples
+- OIDC-enabled artifact and comment integration
+- Artifact fallback for large reports
+- Monorepo and multiple Terraform workspace patterns
+- Pinned Docker tags and checksum-verified binaries
+- Private registry and air-gapped deployment patterns
+- SARIF security gates with `--fail-on-static-code-analysis-errors`
+- Audit-friendly report retention and artifact naming conventions
+
+## Bitbucket Pipelines and Enterprise CI/CD
+
+**Status:** ✅ Implemented
+
+tfplan2md supports Bitbucket Cloud PR comment rendering through the `--render-target bitbucket` option and provides an enterprise Bitbucket Pipelines guide at [enterprise-bitbucket-pipelines.md](enterprise-bitbucket-pipelines.md).
+
+### Bitbucket Render Target
+
+The Bitbucket render target produces markdown-only output suitable for Bitbucket PR comments:
+
+- Converts HTML `<details>` and `<summary>` wrappers into plain markdown sections
+- Converts HTML code blocks and inline code into markdown fences/spans
+- Removes raw HTML tags that Bitbucket comments do not support reliably
+- Uses simple diff formatting rather than inline styled HTML
+
+### Bitbucket PR Comment Helper
+
+The repository includes a Python helper script, `scripts/bitbucket-pr-comment.py`, for Bitbucket Pipelines. It:
+
+- Creates or updates a single bot-owned PR comment using a hidden marker
+- Keeps normal-sized reports inline in the PR comment
+- Falls back to a short comment with an HTML artifact link when a report exceeds the configured size limit
+- Reads Bitbucket Pipelines context from `BITBUCKET_WORKSPACE`, `BITBUCKET_REPO_SLUG`, and `BITBUCKET_PR_ID`
+- Supports secured authentication through `BITBUCKET_TOKEN` or `BITBUCKET_USERNAME` plus `BITBUCKET_APP_PASSWORD`
+
+Fallback comments include a link like:
+
+```html
+<a href="https://bitbucket.org/example/repo/pipelines/results/123">tfplan2md report artifact</a>
+```
+
+### Enterprise Guidance
+
+The enterprise guide covers:
+
+- Docker-based and binary-based Bitbucket Pipelines examples
+- Artifact fallback for large reports
+- Monorepo and multiple Terraform workspace patterns
+- Pinned Docker tags and checksum-verified binaries
+- Private registry and air-gapped deployment patterns
+- SARIF security gates with `--fail-on-static-code-analysis-errors`
+- Audit-friendly report retention and artifact naming conventions
 - Proper emoji rendering support
 
 ## HTML Screenshot Generator (Dev Tool)
@@ -2518,13 +2611,13 @@ See [docs/features/026-template-rendering-simplification/](features/026-template
 
 **Status:** ✅ Implemented
 
-The codebase is now organized with clear separation between Terraform provider-specific code (azapi, azurerm, azuredevops) and output platform-specific code (GitHub vs Azure DevOps rendering). This architectural improvement benefits developers working on tfplan2md without affecting end users.
+The codebase is now organized with clear separation between Terraform provider-specific code (azapi, azurerm, azuredevops) and output platform-specific code (GitHub, Azure DevOps, and Bitbucket rendering). This architectural improvement benefits developers working on tfplan2md without affecting end users.
 
 **Key Changes:**
 
 - **Provider modules**: All provider-specific code (templates, helpers, view models) is now isolated in dedicated `Providers/` folders with matching namespaces
 - **Explicit registration**: Each provider implements the narrow `IProvider` contract and any optional capability interfaces it needs, then registers explicitly via `ProviderRegistry` (no reflection, maintains AOT compatibility)
-- **Render target abstraction**: Platform-specific rendering logic (GitHub vs Azure DevOps) moved to `RenderTargets/` with `IDiffFormatter` interface
+- **Render target abstraction**: Platform-specific rendering logic (GitHub, Azure DevOps, and Bitbucket) moved to `RenderTargets/` with `IDiffFormatter` interface
 - **CLI update**: The `--render-target` flag replaces `--large-value-format` for clearer intent
 
 **Folder Structure:**
@@ -2537,7 +2630,8 @@ src/Oocx.TfPlan2Md/
 │   └── AzureDevOps/     # AzureDevOps provider (azuredevops_*)
 ├── RenderTargets/
 │   ├── GitHub/          # GitHub PR rendering
-│   └── AzureDevOps/     # Azure DevOps PR rendering
+│   ├── AzureDevOps/     # Azure DevOps PR rendering
+│   └── Bitbucket/       # Bitbucket PR markdown-only post-processing
 └── Platforms/
     └── Azure/           # Shared Azure utilities (principal mapping, role names)
 ```
@@ -2559,6 +2653,9 @@ tfplan2md plan.json --render-target github
 
 # For Azure DevOps PR comments (inline diff format)
 tfplan2md plan.json --render-target azuredevops
+
+# For Bitbucket PR comments (markdown-only format)
+tfplan2md plan.json --render-target bitbucket
 ```
 
 **Migration note:** The deprecated `--large-value-format` flag now throws a helpful error directing users to `--render-target`.

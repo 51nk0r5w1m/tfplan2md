@@ -4,7 +4,7 @@ namespace Oocx.TfPlan2Md.RenderTargets;
 /// Specifies the target platform for markdown rendering.
 /// </summary>
 /// <remarks>
-/// Different platforms (GitHub, Azure DevOps) have different markdown rendering capabilities
+/// Different platforms (GitHub, Azure DevOps, Bitbucket) have different markdown rendering capabilities
 /// and optimal formatting strategies. This enum enables platform-specific rendering choices.
 /// Related feature: docs/features/047-provider-code-separation/specification.md.
 /// </remarks>

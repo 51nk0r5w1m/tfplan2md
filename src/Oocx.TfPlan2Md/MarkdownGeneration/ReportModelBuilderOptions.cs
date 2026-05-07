@@ -10,7 +10,7 @@ namespace Oocx.TfPlan2Md.MarkdownGeneration;
 /// </summary>
 /// <param name="ShowSensitive">Whether to show sensitive values without masking.</param>
 /// <param name="ShowUnchangedValues">Whether unchanged attributes should be included in tables.</param>
-/// <param name="RenderTarget">Target platform for markdown rendering (GitHub or Azure DevOps).</param>
+/// <param name="RenderTarget">Target platform for markdown rendering (GitHub, Azure DevOps, or Bitbucket).</param>
 /// <param name="ReportTitle">Optional custom report title to propagate to templates.</param>
 /// <param name="HideMetadata">Whether the metadata line should be suppressed in the rendered report.</param>
 /// <param name="DetailsDisplayMode">Display mode for resource details blocks.</param>

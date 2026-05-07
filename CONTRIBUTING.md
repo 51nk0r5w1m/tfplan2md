@@ -82,7 +82,7 @@ See [docs/architecture-rules.md](docs/architecture-rules.md) for complete layer 
 All generated markdown must:
 - Pass markdownlint validation (MD012 and other rules)
 - Parse correctly with Markdig
-- Render correctly on GitHub and Azure DevOps
+- Render correctly on GitHub, Azure DevOps, and Bitbucket
 - Have proper table structure (no blank lines between rows)
 - Have proper heading spacing (blank lines before/after)
 - Have balanced HTML tags (`<details>`, `<summary>`)
@@ -295,7 +295,7 @@ tfplan2md/
 │   ├── Parsing/                     # Terraform plan JSON parsing
 │   ├── MarkdownGeneration/          # Core rendering logic
 │   ├── Providers/                   # Provider-specific implementations
-│   ├── RenderTargets/               # Platform-specific rendering (GitHub vs Azure DevOps)
+│   ├── RenderTargets/               # Platform-specific rendering (GitHub, Azure DevOps, Bitbucket)
 │   └── Platforms/                   # Cloud platform utilities (Azure)
 ├── src/tests/                       # Test projects
 └── docs/                            # Documentation
@@ -323,7 +323,7 @@ Each provider is self-contained:
 | **Parsing** | `Parsing/` | Terraform plan JSON deserialization |
 | **MarkdownGeneration** | `MarkdownGeneration/` | Core report building and rendering |
 | **Providers** | `Providers/{Provider}/` | Provider-specific logic (azurerm, azapi, azuredevops) |
-| **RenderTargets** | `RenderTargets/` | Platform-specific diff formatting (GitHub, Azure DevOps) |
+| **RenderTargets** | `RenderTargets/` | Platform-specific diff formatting (GitHub, Azure DevOps, Bitbucket) |
 | **Platforms** | `Platforms/Azure/` | Azure-specific utilities (principal mapping, role names) |
 
 ### Architecture Documentation
