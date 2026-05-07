@@ -27,7 +27,7 @@ Found a bug? Please [open an issue](https://github.com/oocx/tfplan2md/issues/new
 - Clear description of the problem
 - Steps to reproduce
 - Expected vs actual behavior
-- Your environment (OS, .NET version, Docker version)
+- Your environment (OS, Go version, Docker version)
 - Sample Terraform plan JSON (if possible)
 
 Use the **Bug Report** template for structured information.

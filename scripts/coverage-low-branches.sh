@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Lists classes with the lowest branch coverage from a Cobertura XML file.
-# Usage: scripts/coverage-low-branches.sh [count] [path-to-cobertura.xml]
+# Lists packages with the lowest function coverage from a Go coverage profile.
+# Usage: scripts/coverage-low-branches.sh [count] [path-to-coverage.out]
 
 count="${1:-30}"
 coverage_path="${2:-}"
 
 if [[ -z "$coverage_path" ]]; then
-  if [[ -f "TestResults/coverage.cobertura.xml" ]]; then
-    coverage_path="TestResults/coverage.cobertura.xml"
-  elif [[ -f "src/TestResults/coverage.cobertura.xml" ]]; then
-    coverage_path="src/TestResults/coverage.cobertura.xml"
+  if [[ -f "src-go/coverage.out" ]]; then
+    coverage_path="src-go/coverage.out"
   else
-    matches=(src/tests/Oocx.TfPlan2Md.TUnit/bin/**/TestResults/*.cobertura.xml)
+    matches=(src-go/coverage*.out)
     if (( ${#matches[@]} > 0 )); then
       coverage_path="${matches[0]}"
     fi
@@ -21,25 +19,13 @@ if [[ -z "$coverage_path" ]]; then
 fi
 
 if [[ -z "$coverage_path" || ! -f "$coverage_path" ]]; then
-  echo "Coverage file not found. Pass the cobertura.xml path explicitly." >&2
+  echo "Coverage file not found. Pass the coverage.out path explicitly." >&2
+  echo "Generate with: cd src-go && go test -coverprofile=coverage.out ./..." >&2
   exit 1
 fi
 
-python3 - <<PY
-import xml.etree.ElementTree as ET
-from pathlib import Path
-path = Path("$coverage_path")
-root = ET.parse(path).getroot()
-classes = []
-for cls in root.iter('class'):
-    br = cls.get('branch-rate')
-    if br is not None:
-        classes.append({
-            'name': cls.get('name'),
-            'branch': float(br) * 100
-        })
-
-classes.sort(key=lambda x: x['branch'])
-for cls in classes[:int("$count")]:
-    print(f"{cls['branch']:>6.2f}% {cls['name']}")
-PY
+# Use go tool cover to display per-function coverage and sort by lowest
+go tool cover -func="$coverage_path" \
+  | grep -v "^total:" \
+  | sort -t$'\t' -k3 -n \
+  | head -n "$count"

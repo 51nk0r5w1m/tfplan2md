@@ -39,7 +39,7 @@ GitHub Copilot coding agents require secrets to be configured in a special `copi
    - Runs before the coding agent starts working
    - Authenticates GitHub CLI using `GH_UAT_TOKEN`
    - Authenticates Azure DevOps CLI using `AZDO_UAT_TOKEN`
-   - Sets up required tools (.NET, Node.js, etc.)
+   - Sets up required tools (Go, Node.js, etc.)
 
 2. **Coding Agents**: `.github/agents/*-coding-agent.agent.md`
    - Execute in the pre-configured environment

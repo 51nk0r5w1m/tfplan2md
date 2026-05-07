@@ -2,7 +2,7 @@
 
 ## Overview
 
-Port the existing .NET 10 / C# 13 `tfplan2md` CLI tool to **Golang**.
+Port the existing `tfplan2md` CLI tool to **Golang**.
 The tool converts Terraform plan JSON files into human-readable Markdown reports.
 
 **Language decision:** Golang — confirmed by Maintainer. Produces a self-contained static
@@ -28,7 +28,7 @@ record for the language choice and defines the key Go conventions and constraint
 subsequent tasks must follow (module path, minimum Go version, linter configuration, etc.).
 
 **Acceptance Criteria:**
-- [ ] ADR created at `docs/adr-NNN-port-to-golang.md`
+- [ ] ADR created at `docs/adr-012-port-to-golang.md` (follows the `adr-NNN-<slug>.md` naming convention; next after `adr-011-upx-binary-compression.md`)
 - [ ] ADR covers: context, decision (Golang), rationale, key Go-ecosystem choices (JSON library,
   CLI library, test framework), and consequences for distribution and CI
 - [ ] Minimum Go version documented (recommend Go 1.22+ for `range` over integers, `slices`/`maps` packages)
@@ -99,21 +99,38 @@ from arguments and exits cleanly.
 
 **Description:**
 Implement parsing of `terraform show -json` output in Go using `encoding/json` with struct
-tags. This is the foundational input stage. The existing C# `Parsing/` subsystem handles:
+tags. This is the foundational input stage. The existing parsing subsystem handles:
 `TerraformPlan`, `ResourceChange`, `ResourceDrift`, `OutputChange`, `ConfigurationDeprecation`,
 `RelevantAttribute` paths, lifecycle action triggers, and custom JSON converters.
 
-Map each C# type to a corresponding Go struct in `internal/parsing/`. Use `json:` struct tags
+Map each type to a corresponding Go struct in `internal/parsing/`. Use `json:` struct tags
 for field mapping and implement custom `json.Unmarshaler` where needed (e.g., action arrays).
 
 **Acceptance Criteria:**
-- [ ] All existing Terraform plan JSON test fixtures parse successfully (re-use `TestData/` files)
-- [ ] Handles terraform format versions currently supported (1.x through 1.15+)
+- [ ] All existing Terraform plan JSON test fixtures parse successfully (re-use `testdata/` files)
+- [ ] Handles all supported Terraform plan `format_version` values (see note below)
 - [ ] Sensitive values are correctly identified from plan JSON (`sensitive: true`)
 - [ ] Resource change actions (create, update, delete, replace, no-op, move, import) all parsed
 - [ ] Outputs, moved blocks, and import blocks parsed
 - [ ] Deprecation warnings parsed
 - [ ] Unit tests cover all parsing scenarios with existing test fixtures
+
+> **`format_version` vs `terraform_version` — important distinction:**
+>
+> Terraform plan JSON has two distinct version fields:
+>
+> | Field | Example value | What it means |
+> |---|---|---|
+> | `format_version` | `"1.2"` | Schema version of the plan JSON document (semver). This is what the parser must handle. |
+> | `terraform_version` | `"1.15.0"` | The Terraform CLI version that produced the plan. Informational only; no parsing logic depends on it. |
+>
+> The Go parser must validate and handle `format_version`. As of Terraform 1.15, all plans use `format_version` `"1.2"`. The version `"1.0"` and `"1.1"` exist in older plans. The acceptance criterion is:
+>
+> - [ ] Parser reads and validates `format_version` from the JSON root
+> - [ ] `format_version` values `"1.0"`, `"1.1"`, and `"1.2"` are all accepted
+> - [ ] Unknown future `format_version` values produce a clear error (`ErrUnsupportedFormatVersion`)
+> - [ ] `terraform_version` is stored as a plain string field — no parsing logic branches on it
+> - [ ] The report output includes the `terraform_version` string for display only
 
 **Dependencies:** Task 3
 
@@ -124,7 +141,7 @@ for field mapping and implement custom `json.Unmarshaler` where needed (e.g., ac
 **Priority:** High
 
 **Description:**
-Implement the core report model builder and Markdown writer in Go. In the C# codebase this is
+Implement the core report model builder and Markdown writer in Go. In the existing codebase this is
 `MarkdownGeneration/Rendering/` (ReportRenderer, SummaryRenderer, MarkdownWriter, HeaderRenderer)
 and the report model builder that converts parsed plan data into a rendering model. Map these
 to Go packages under `internal/markdown/` using `strings.Builder` or `text/template` for
@@ -148,7 +165,7 @@ Markdown generation.
 **Priority:** Medium
 
 **Description:**
-Implement provider-specific rendering in Go. The C# codebase has 87 files across `Providers/AzureRM`,
+Implement provider-specific rendering in Go. The existing codebase has 87 files across `Providers/AzureRM`,
 `Providers/AzApi`, `Providers/AzureAD`, and `Providers/AzureDevOps`. Each provider registers
 attribute filters, value formatters, and icon rules for specific resource types (e.g., firewall
 rules, NSG rules, role assignments). Map to Go packages under `internal/providers/`.
@@ -178,9 +195,8 @@ with the most commonly used (AzureRM core resources).
 **Priority:** High
 
 **Description:**
-Implement the full CLI argument parser in Go matching the current interface defined in
-`CLI/CliParser.cs`. Use `cobra` (recommended) or the stdlib `flag` package. All current flags
-and options must be supported.
+Implement the full CLI argument parser in Go matching the current interface. Use `cobra`
+(recommended) or the stdlib `flag` package. All current flags and options must be supported.
 
 Key options to support (from current codebase):
 - `--input` / `-i` — input plan JSON file path
@@ -208,7 +224,7 @@ Key options to support (from current codebase):
 **Priority:** Medium
 
 **Description:**
-Implement render target adapters (GitHub, Azure DevOps, Bitbucket) in Go. The C# codebase has
+Implement render target adapters (GitHub, Azure DevOps, Bitbucket) in Go. The existing codebase has
 `RenderTargets/` with platform-specific markdown formatting (e.g., `<details>` collapsing,
 table formatting differences, icon availability). Map to Go interfaces under
 `internal/rendertargets/` with a `RenderTarget` interface and concrete implementations.
@@ -231,17 +247,17 @@ table formatting differences, icon availability). Map to Go interfaces under
 
 **Description:**
 Establish the Go test framework and port all existing snapshot-based tests. The current test
-suite has 192 test files and uses TUnit with snapshot assertions. Tests consume fixtures from
-`TestData/`. In Go, use the stdlib `testing` package with `testify/assert` for assertions and
-a custom snapshot helper that reads/writes `.md` files from `TestData/`.
+suite uses snapshot assertions and consumes fixtures from `testdata/`. In Go, use the stdlib
+`testing` package with `testify/assert` for assertions and a custom snapshot helper that
+reads/writes `.md` files from `testdata/`.
 
 **Acceptance Criteria:**
 - [ ] Test framework documented: stdlib `testing` + `github.com/stretchr/testify/assert`
-- [ ] Snapshot test helper implemented: compares generated markdown against expected `.md` files in `TestData/`
-- [ ] All existing `TestData/` fixtures have corresponding `_test.go` tests
+- [ ] Snapshot test helper implemented: compares generated markdown against expected `.md` files in `testdata/`
+- [ ] All existing `testdata/` fixtures have corresponding `_test.go` tests
 - [ ] `go test ./...` runs all tests and fails on unexpected snapshot output changes
 - [ ] `go test -coverprofile=coverage.out ./...` produces code coverage ≥ 80%
-- [ ] `scripts/test-with-timeout.sh` updated to run `go test ./...` instead of `dotnet test`
+- [ ] `scripts/test-with-timeout.sh` runs `go test ./...` by default (no dotnet dependency)
 - [ ] Tests run in CI on every PR
 
 **Dependencies:** Tasks 4, 5, 6, 7, 8
@@ -284,11 +300,30 @@ Add parallel Go build/test/release steps alongside the existing .NET steps.
 
 **Acceptance Criteria:**
 - [ ] CI workflow has a `go-build` job: `go build ./...` + `golangci-lint run`
-- [ ] CI workflow has a `go-test` job: `go test -race -coverprofile=coverage.out ./...`
+- [ ] CI workflow has a `go-test` job: `go test -race -coverprofile=coverage.out ./...` (see CGO note below)
 - [ ] Release workflow has a `go-release` job: cross-compiles all target platforms and uploads binaries
 - [ ] Code coverage report for Go published in CI (e.g., using `codecov` or `coveralls`)
 - [ ] Static analysis via `golangci-lint` integrated in CI (fail on lint errors)
-- [ ] Existing .NET CI/CD steps are preserved and continue to pass
+
+> **CGO_ENABLED=0 vs `go test -race` — architecture impact:**
+>
+> Go's race detector is implemented using CGO (it instruments the binary with a C runtime). This
+> creates a conflict when `CGO_ENABLED=0` is set globally:
+>
+> | Job type | `CGO_ENABLED` | `-race` | Why |
+> |---|---|---|---|
+> | `go-build` (PR validation) | `0` | No | Static binary verification; CGO disabled for reproducibility |
+> | `go-test` (PR validation) | *not set* (default `1`) | Yes | Race detector requires CGO; runs on standard hosted runner |
+> | `go-release` (cross-compile) | `0` | No | Must produce static binaries for scratch Docker and all target platforms |
+>
+> **Implementation rule:** `CGO_ENABLED=0` is set **only** in build and release steps that produce
+> distribution artifacts. Test jobs use the default CGO setting (`CGO_ENABLED=1`) so that `-race`
+> works correctly. On Windows the race detector is supported; on `linux/arm64` GitHub-hosted
+> runners it is also available since Go 1.21. The `go-release` job never uses `-race`.
+>
+> **Implication for scratch Docker images:** The final Docker image is built from a `CGO_ENABLED=0`
+> static binary so it runs on `scratch` without glibc. The test image (used only in CI) may use a
+> glibc-based runner.
 
 **Dependencies:** Tasks 3, 9, 10
 
@@ -303,13 +338,13 @@ Update all user-facing documentation to reference Go alongside (or instead of) .
 applicable. Do not remove any existing documentation — refactor to reference Go.
 
 **Acceptance Criteria:**
-- [ ] `README.md` installation instructions include Go binary download and `go install` options
-- [ ] `CONTRIBUTING.md` development setup includes Go toolchain requirements (Go 1.22+, `golangci-lint`)
+- [ ] `README.md` updated: Go badge replaces the .NET badge; installation instructions include `go install` option; development setup references Go toolchain
+- [ ] `CONTRIBUTING.md` development setup references Go toolchain requirements (Go 1.22+, `golangci-lint`)
 - [ ] `docs/architecture.md` updated with a Go architecture section
-- [ ] `docs/spec.md` updated to reference Go as the implementation language alongside .NET
+- [ ] `docs/spec.md` updated to reference Go as the implementation language
 - [ ] `docs/features.md` updated if any user-facing behaviour changes
 - [ ] Docker usage examples updated to reflect the Go-based image
-- [ ] All references to ".NET", "C#", or "dotnet" in user-facing docs reviewed; keep .NET references where both implementations are active
+- [ ] All `.NET`, `C#`, or `dotnet` references in documentation ported to Go equivalents
 
 **Dependencies:** Tasks 3–11
 
@@ -343,9 +378,9 @@ Recommended sequence for implementation:
      logic in the initial release, or target core functionality first with providers added
      incrementally in follow-up features?
 
-2. **Migration strategy: replace .NET or coexist?**
-   - Should the Go implementation eventually replace the .NET project entirely, or should
-     both be maintained in parallel? The current tasks assume coexistence (no .NET files removed).
+2. **Migration strategy: full replace or coexist?**
+   - Should the Go implementation replace the existing project entirely, or should
+     both be maintained in parallel? The current tasks assume coexistence (no existing files removed).
 
 3. **Version continuity**: Should semantic versioning continue from the current .NET version,
    or should the Go port start at `1.0.0` as a clean slate?

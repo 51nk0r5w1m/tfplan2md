@@ -38,17 +38,17 @@ Regenerate this example:
 
 ```bash
 # Generate markdown
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
+./tfplan2md \
   examples/api-management-policy-demo/plan.json > examples/api-management-policy-demo/output.md
 
 # Generate GitHub HTML
-dotnet run --project src/tools/Oocx.TfPlan2Md.HtmlRenderer/Oocx.TfPlan2Md.HtmlRenderer.csproj -- \
+./htmlrenderer \
   --input examples/api-management-policy-demo/output.md \
   --flavor github \
   --output examples/api-management-policy-demo/output-github.html
 
 # Generate Azure DevOps HTML
-dotnet run --project src/tools/Oocx.TfPlan2Md.HtmlRenderer/Oocx.TfPlan2Md.HtmlRenderer.csproj -- \
+./htmlrenderer \
   --input examples/api-management-policy-demo/output.md \
   --flavor azdo \
   --output examples/api-management-policy-demo/output-azdo.html

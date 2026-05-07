@@ -2,7 +2,8 @@
 # Update Test Snapshots Script
 #
 # Purpose: Regenerate all test snapshot files when intentional markdown changes are made.
-# This script deletes existing snapshots and re-runs tests to capture the new expected output.
+# This script deletes existing snapshots and re-runs Go tests with UPDATE_SNAPSHOTS=1
+# to capture the new expected output.
 #
 # Usage: scripts/update-test-snapshots.sh
 
@@ -18,171 +19,51 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-SNAPSHOTS_DIR="$REPO_ROOT/src/tests/Oocx.TfPlan2Md.TUnit/TestData/Snapshots"
+GO_MODULE_DIR="$REPO_ROOT/src-go"
+SNAPSHOTS_DIR="$GO_MODULE_DIR/testdata/snapshots"
 
-if [[ ! -d "$SNAPSHOTS_DIR" ]]; then
-  log_error "Snapshots directory not found: $SNAPSHOTS_DIR"
+if [[ ! -d "$GO_MODULE_DIR" ]]; then
+  log_error "Go module directory not found: $GO_MODULE_DIR"
+  log_error "The Go implementation must exist at src-go/ before snapshots can be updated."
   exit 1
 fi
+
+if [[ ! -f "$GO_MODULE_DIR/go.mod" ]]; then
+  log_error "go.mod not found in $GO_MODULE_DIR"
+  exit 1
+fi
+
+# Create snapshots directory if it doesn't exist yet
+mkdir -p "$SNAPSHOTS_DIR"
 
 log_info "Deleting existing snapshot files..."
-rm -f "$SNAPSHOTS_DIR"/*.md
-log_info "✓ Deleted $(find "$SNAPSHOTS_DIR" -maxdepth 1 -type f -name '*.md' | wc -l) snapshot files"
+find "$SNAPSHOTS_DIR" -maxdepth 2 -type f -name '*.md' -delete 2>/dev/null || true
+log_info "✓ Cleared existing snapshots"
 
-log_info "Running snapshot tests to regenerate files..."
-log_info "(Tests will fail on first run, but will create new snapshots)"
-
-# Run snapshot tests (MarkdownSnapshotTests and AzapiSnapshotTests)
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/MarkdownSnapshotTests/*" \
-    --output Normal || true
-)
+log_info "Running snapshot tests with UPDATE_SNAPSHOTS=1 to regenerate files..."
+log_info "(Tests will update snapshots instead of asserting equality)"
 
 (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/AzapiSnapshotTests/*" \
-    --output Normal || true
+  cd "$GO_MODULE_DIR"
+  UPDATE_SNAPSHOTS=1 go test -run "Snapshot" ./... -v 2>&1 || true
 )
-
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/AzureAdSnapshotTests/*" \
-    --output Normal || true
-)
-
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/AzureDevOpsSnapshotTests/*" \
-    --output Normal || true
-)
-
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/ParentChildUatSnapshotTests/*" \
-    --output Normal || true
-)
-
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/EphemeralSnapshotTests/*" \
-    --output Normal || true
-)
-
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/KnownAfterApplySnapshotTests/*" \
-    --output Normal || true
-)
-
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/OutputsSnapshotTests/*" \
-    --output Normal || true
-)
-
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/ParentChildConditionalColumnSnapshotTests/*" \
-    --output Normal || true
-)
-
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/ReportModelBuilderNoOpParentWithChildrenTests/*" \
-    --output Normal || true
-)
-
-(
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/Terraform114SnapshotTests/*" \
-    --output Normal || true
-)
-
-# Copy snapshots from bin/Debug output to source directory
-BIN_SNAPSHOTS="$REPO_ROOT/src/tests/Oocx.TfPlan2Md.TUnit/bin/Debug/net10.0/TestData/Snapshots"
-if [[ -d "$BIN_SNAPSHOTS" ]]; then
-  log_info "Copying generated snapshots from build output to source..."
-  cp -f "$BIN_SNAPSHOTS"/*.md "$SNAPSHOTS_DIR/" 2>/dev/null || true
-fi
 
 # Count generated snapshots
-SNAPSHOT_COUNT=$(find "$SNAPSHOTS_DIR" -maxdepth 1 -type f -name '*.md' | wc -l)
+SNAPSHOT_COUNT=$(find "$SNAPSHOTS_DIR" -maxdepth 2 -type f -name '*.md' 2>/dev/null | wc -l)
 
 if [[ $SNAPSHOT_COUNT -eq 0 ]]; then
-  log_error "No snapshot files were generated. Tests may have crashed."
-  exit 1
+  log_warn "No snapshot files were generated."
+  log_warn "Either no snapshot tests exist yet, or they use a different testdata directory."
+  log_warn "Check that snapshot tests write to: $SNAPSHOTS_DIR"
+  exit 0
 fi
 
 log_info "✓ Generated $SNAPSHOT_COUNT new snapshot files"
 
 log_info "Running snapshot tests again to verify..."
 if (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/MarkdownSnapshotTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/AzapiSnapshotTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/AzureAdSnapshotTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/AzureDevOpsSnapshotTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/ParentChildUatSnapshotTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/EphemeralSnapshotTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/KnownAfterApplySnapshotTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/OutputsSnapshotTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/ParentChildConditionalColumnSnapshotTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/ReportModelBuilderNoOpParentWithChildrenTests/*" \
-    --output Normal
-) && (
-  cd "$REPO_ROOT/src"
-  dotnet test --project tests/Oocx.TfPlan2Md.TUnit/Oocx.TfPlan2Md.TUnit.csproj \
-    --treenode-filter "/*/*/Terraform114SnapshotTests/*" \
-    --output Normal
+  cd "$GO_MODULE_DIR"
+  go test -run "Snapshot" ./... -v
 ); then
   log_info "✅ All snapshot tests pass!"
   log_info ""

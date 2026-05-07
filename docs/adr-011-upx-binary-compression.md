@@ -1,5 +1,9 @@
 # ADR-011: UPX Binary Compression for Standalone Releases
 
+> **Note:** This ADR documents a design decision for the **legacy .NET/C# implementation**.
+> The Go port (see ADR-012) may supersede or adapt this decision.
+
+
 ## Status
 
 Accepted

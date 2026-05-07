@@ -169,7 +169,7 @@ Note: `docs/agents.md` is a helpful index, but `.github/skills/` is the authorit
 - **Asking questions**: 
   - **VS Code chat agents**: Use the `askQuestions` tool when you need clarification from the user, especially when presenting options or choices. The tool provides an interactive UI for single-select, multi-select, or free-text responses. Example: Instead of "Option 1: X, Option 2: Y - Please reply with 1 or 2", use askQuestions with interactive choices.
   - **GitHub Copilot coding agents**: The `askQuestions` tool is NOT available. Instead, create a PR comment listing your options and wait for the maintainer to respond. Example: "I need to choose between Option 1: X and Option 2: Y. Which should I use?"
-- **Directly-invokable scripts**: Always run repository scripts directly (e.g., `scripts/uat-run.sh`, `scripts/pr-github.sh`, `scripts/validate-agents.py`) instead of via an interpreter/runner (e.g., `bash scripts/<script>.sh`, `python3 scripts/<script>.py`, `dotnet <runner> scripts/<script>`).
+- **Directly-invokable scripts**: Always run repository scripts directly (e.g., `scripts/uat-run.sh`, `scripts/pr-github.sh`, `scripts/validate-agents.py`) instead of via an interpreter/runner (e.g., `bash scripts/<script>.sh`, `python3 scripts/<script>.py`, `go run scripts/<script>.go`).
   - This enables per-script permanent allow rules in VS Code approvals.
   - If a script is not directly invokable, fix it instead of working around it (add a proper shebang and make it executable).
   - Exception: interpreter tracing is allowed only for debugging (e.g., `bash -x ...`).

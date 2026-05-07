@@ -164,8 +164,7 @@ ensure_github_credential_helper() {
 #
 # Validates that the artifact was generated from the current version of
 # tfplan2md. Extracts the git commit hash embedded in the artifact header
-# and checks if any source files (*.cs, *.sbn, *.csproj) changed since
-# that commit.
+# and checks if any source files (*.go) changed since that commit.
 #
 # Returns 0 if the artifact is up-to-date, 1 if it is stale.
 # Warns (and returns 0) if the commit hash cannot be verified.
@@ -215,10 +214,10 @@ check_artifact_freshness() {
         return 0
     fi
 
-    # Check if any source files changed between the artifact commit and HEAD
+    # Check if any Go source files changed between the artifact commit and HEAD
     local changed_src
-    changed_src="$(git diff --name-only "${artifact_full_hash}..HEAD" -- 'src/' 2>/dev/null \
-        | grep -E '\.(cs|sbn|csproj)$' | head -5 || echo "")"
+    changed_src="$(git diff --name-only "${artifact_full_hash}..HEAD" -- 'src-go/' 2>/dev/null \
+        | grep -E '\.go$' | head -5 || echo "")"
 
     if [[ -n "$changed_src" ]]; then
         log_error "Artifact '$artifact' is outdated."
@@ -231,8 +230,7 @@ check_artifact_freshness() {
         log_error "  1. Regenerate the comprehensive demo artifacts:"
         log_error "       scripts/generate-demo-artifacts.sh"
         log_error "  2. For feature-specific artifacts, regenerate using:"
-        log_error "       dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \\"
-        log_error "         [your args] --output <artifact-path>"
+        log_error "       ./tfplan2md [your args] --output <artifact-path>"
         log_error "  3. Commit the updated artifacts and re-run UAT"
         return 1
     fi
