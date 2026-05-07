@@ -1,5 +1,9 @@
 # ADR-002: Use .NET Chiseled (Distroless) Docker Image
 
+> **Note:** This ADR documents a design decision for the **legacy .NET/C# implementation**.
+> The Go port (see ADR-012) may supersede or adapt this decision.
+
+
 ## Status
 
 Superseded by Feature 037 (AOT-Compiled Trimmed Docker Image)

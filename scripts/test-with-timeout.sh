@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Wrapper to prevent hung test runs and handle .NET 10 dual test runner issue.
+# Wrapper to prevent hung test runs.
 #
-# .NET 10 has two test runners (VSTest and Microsoft.Testing.Platform) that
-# activate based on whether global.json with "runner": "Microsoft.Testing.Platform"
-# is found. This script ensures tests run from src/ directory where global.json
-# exists, enabling Microsoft.Testing.Platform runner which supports --solution,
-# --project, and --treenode-filter flags.
+# Default behavior (no "--"): runs `go test ./...` from src-go/ if the directory
+# exists, otherwise from the repo root.
 #
 # Usage:
-#   scripts/test-with-timeout.sh [--timeout-seconds <n>] [--grace-seconds <n>] [dotnet-test-args...]
+#   scripts/test-with-timeout.sh [--timeout-seconds <n>] [--grace-seconds <n>] [go-test-args...]
 #   scripts/test-with-timeout.sh [--timeout-seconds <n>] [--grace-seconds <n>] -- <command> [args...]
 #
-# Default behavior (no "--"): runs `dotnet test` with the provided args.
+# Examples:
+#   scripts/test-with-timeout.sh
+#   scripts/test-with-timeout.sh -race -coverprofile=coverage.out
+#   scripts/test-with-timeout.sh --timeout-seconds 300 -- go test -race -tags=integration ./...
+#   scripts/test-with-timeout.sh --timeout-seconds 5 -- bash -c 'sleep 30'
 #
 # Exit codes:
 #   0..   Command exit code
@@ -28,11 +29,13 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/test-with-timeout.sh [--timeout-seconds <n>] [--grace-seconds <n>] [dotnet-test-args...]
+  scripts/test-with-timeout.sh [--timeout-seconds <n>] [--grace-seconds <n>] [go-test-args...]
   scripts/test-with-timeout.sh [--timeout-seconds <n>] [--grace-seconds <n>] -- <command> [args...]
 
 Examples:
-  scripts/test-with-timeout.sh --timeout-seconds 1800 -- dotnet test --solution src/tfplan2md.slnx --no-build --configuration Release
+  scripts/test-with-timeout.sh
+  scripts/test-with-timeout.sh -race -coverprofile=coverage.out ./...
+  scripts/test-with-timeout.sh --timeout-seconds 300 -- go test -race -tags=integration ./...
   scripts/test-with-timeout.sh --timeout-seconds 5 -- bash -c 'sleep 30'
 USAGE
 }
@@ -73,29 +76,22 @@ if ! [[ "$timeout_seconds" =~ ^[0-9]+$ ]] || ! [[ "$grace_seconds" =~ ^[0-9]+$ ]
 fi
 
 cmd=()
-work_dir="$repo_root"
+# Default work directory: src-go/ if present, else repo root
+if [[ -d "$repo_root/src-go" ]]; then
+  work_dir="$repo_root/src-go"
+else
+  work_dir="$repo_root"
+fi
+
 if [[ "$explicit_command" == "true" ]]; then
   if [[ ${#@} -eq 0 ]]; then
     usage >&2
     exit 125
   fi
   cmd=("$@")
-  if [[ "${cmd[0]}" == "dotnet" && "${cmd[1]:-}" == "test" ]]; then
-    work_dir="$repo_root/src"
-    echo "INFO: Executing 'dotnet test' from src/ directory (required for .NET 10 Microsoft.Testing.Platform runner)" >&2
-    normalized_cmd=()
-    for arg in "${cmd[@]}"; do
-      if [[ "$arg" == src/* && -e "$repo_root/$arg" ]]; then
-        normalized_cmd+=("${arg#src/}")
-      else
-        normalized_cmd+=("$arg")
-      fi
-    done
-    cmd=("${normalized_cmd[@]}")
-  fi
 else
-  work_dir="$repo_root/src"
-  cmd=(dotnet test --project tests/Oocx.TfPlan2Md.TUnit/ "$@")
+  # Default: go test with any extra args passed through
+  cmd=(go test ./... "$@")
 fi
 
 if ! command -v "${cmd[0]}" >/dev/null 2>&1; then

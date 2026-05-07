@@ -1,7 +1,7 @@
 ---
 name: generate-demo-artifacts
 description: Generate the comprehensive demo markdown artifacts from the current codebase. Use before UAT to ensure test artifacts reflect the latest code.
-compatibility: Requires .NET SDK and access to the repository workspace.
+compatibility: Requires Go 1.22+ and access to the repository workspace.
 ---
 
 # Generate Demo Artifacts
@@ -17,7 +17,7 @@ Regenerate all demo markdown artifacts using the current code. This ensures UAT 
 
 ### Must Not
 - Modify the input `plan.json` or `demo-principals.json` files
-- Run individual dotnet commands instead of the wrapper script
+- Run individual `go run` commands instead of the wrapper script
 - Skip verification of generated output
 
 ## Actions
@@ -28,7 +28,7 @@ scripts/generate-demo-artifacts.sh
 ```
 
 This single command:
-1. Builds the project in Release configuration
+1. Builds the project (`go build ./...` in `src-go/`)
 2. Generates all artifacts in `/artifacts/` (used for UAT):
    - `comprehensive-demo.md` (inline-diff format, for Azure DevOps UAT)
    - `comprehensive-demo-simple-diff.md` (simple diff format, for GitHub UAT)
@@ -43,7 +43,7 @@ This single command:
 
 ## Expected Output
 ```
-[INFO] Building project (Release configuration)...
+[INFO] Building project (go build)...
 [INFO] Generating artifacts/comprehensive-demo.md (inline-diff, for Azure DevOps UAT)...
 [INFO] ✓ artifacts/comprehensive-demo.md generated successfully (inline-diff)
 [INFO] Generating artifacts/comprehensive-demo-simple-diff.md (for GitHub UAT)...

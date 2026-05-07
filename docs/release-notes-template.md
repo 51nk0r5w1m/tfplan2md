@@ -20,12 +20,12 @@ Include this section only if you have screenshots.
 
 If you list anything under ✨ Features and it changes rendered output, you should include screenshots.
 
-PREREQUISITE: Install Playwright before generating screenshots:
+PREREQUISITE: Install Playwright before generating screenshots (requires Go binary to be built):
 ```bash
-dotnet build src/tools/Oocx.TfPlan2Md.ScreenshotGenerator/
-pwsh src/tools/Oocx.TfPlan2Md.ScreenshotGenerator/bin/Debug/net10.0/playwright.ps1 install chromium --with-deps
+cd src-go && go build -o screenshotgenerator ./tools/screenshotgenerator
+./screenshotgenerator install-browsers  # installs Chromium for Playwright
 ```
-NOTE: Do NOT use `npx playwright install` — the npm version differs from the .NET package.
+NOTE: Use the Go-built `screenshotgenerator` binary — not `npx playwright install`.
 
 Generate screenshots using:
 

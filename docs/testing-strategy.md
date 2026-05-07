@@ -2,218 +2,198 @@
 
 ## Overview
 
-The tfplan2md project uses a comprehensive testing strategy with **TUnit v1.9.26** as the test framework. All tests are located in the `Oocx.TfPlan2Md.TUnit` project.
-
-> **Note**: Legacy MSTest and xUnit test projects were removed as TUnit provides superior performance and reliability. All snapshot files were intentionally removed along with the legacy test projects as they are maintained only in the TUnit test project.
+The tfplan2md project uses a comprehensive testing strategy with **Go's standard `testing` package** and **testify** as the test framework. All tests are located under `src-go/` alongside the packages they test, following Go conventions.
 
 ## Test Infrastructure
 
-- **Test Framework**: TUnit 1.9.26 (async-first with real-time progress reporting)
-- **Test Location**: `src/tests/Oocx.TfPlan2Md.TUnit/`
-- **Test Execution**: `dotnet test --project src/tests/Oocx.TfPlan2Md.TUnit/` or use `scripts/test-with-timeout.sh`
+- **Test Framework**: Go stdlib `testing` + `github.com/stretchr/testify` (assert/require)
+- **Test Location**: `_test.go` files co-located with each `internal/` package; integration tests in `src-go/test/`
+- **Test Execution**: `go test ./...` from `src-go/`, or use `scripts/test-with-timeout.sh`
 
-### TUnit CLI Syntax
+### Go Test CLI Syntax
 
-TUnit uses different CLI arguments compared to traditional test frameworks. All TUnit-specific flags must be passed after `--`:
-
-#### Filtering Tests
+#### Running Tests
 ```bash
-# Filter by class name (hierarchical pattern)
-dotnet test --treenode-filter /*/*/LoginTests/*
+# Run all tests (from src-go/)
+go test ./...
 
-# Filter by test name
-dotnet test --treenode-filter /*/*/*/AcceptCookiesTest
+# Run with race detector (required in CI)
+go test -race ./...
 
-# Filter by property/category
-dotnet test --treenode-filter /**[Category=Unit]
+# Run with coverage
+go test -race -coverprofile=coverage.out ./...
 
-# Exclude by category
-dotnet test --treenode-filter /**[Category!=Integration]
+# Run a specific package
+go test ./internal/parsing/...
 
-# Multiple conditions (AND)
-dotnet test --treenode-filter /**[Category=Unit]&[Priority=High]
+# Run a specific test by exact name
+go test ./internal/parsing/... -run TestParsePlan_ValidJSON
+
+# Run table-driven subtests (use /subtest-name syntax)
+go test ./internal/markdown/... -run TestRender/create_resource
+
+# Run with verbose output
+go test -v ./...
+
+# Run fuzz tests
+go test ./internal/parsing/... -fuzz=FuzzParsePlan -fuzztime=30s
+
+# Use the timeout wrapper (recommended for CI)
+scripts/test-with-timeout.sh -- go test -race ./...
 ```
 
-**Note**: TUnit uses `--treenode-filter` with hierarchical patterns (`/Assembly/Namespace/ClassName/TestName`), unlike traditional test frameworks.
-
-#### Output Control
+#### Coverage
 ```bash
-# Normal output (only failures shown, buffered)
-dotnet test --output Normal
+# Generate and view coverage report
+go test -race -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out  # open in browser
+go tool cover -func=coverage.out  # summary in terminal
 
-# Detailed output (all tests shown, real-time)
-dotnet test --output Detailed
-
-# Disable progress reporting
-dotnet test --no-progress
-
-# Disable ANSI colors
-dotnet test --no-ansi
+# Coverage threshold enforcement (CI target: ≥ 80%)
+go tool cover -func=coverage.out | grep "total:" | awk '{print $3}'
 ```
 
-#### Log Levels
+#### Build Tags
 ```bash
-# Set log level for diagnostics
-dotnet test --log-level Trace      # Maximum detail
-dotnet test --log-level Debug      # Debug information
-dotnet test --log-level Information # Default
-dotnet test --log-level Warning    # Warnings and errors only
-dotnet test --log-level Error      # Errors only
+# Run integration tests (tagged separately to exclude from unit test runs)
+go test -tags=integration ./...
 
-# Combine with output control
-dotnet test --output Detailed --log-level Debug
+# Run only unit tests (default, no extra flags needed)
+go test ./...
 ```
 
-#### Common Examples
-```bash
-# Run all tests with detailed output
-scripts/test-with-timeout.sh -- dotnet test --solution src/tfplan2md.slnx --output Detailed
-
-# Run specific test class (from repo root, use --project)
-scripts/test-with-timeout.sh -- dotnet test --project src/tests/Oocx.TfPlan2Md.TUnit/ --treenode-filter /*/*/MarkdownRendererTests/*
-
-# Run tests with category, detailed output, and debug logging
-dotnet test --project src/tests/Oocx.TfPlan2Md.TUnit/ --treenode-filter /**[Category=Unit] --output Detailed --log-level Debug
-```
-
-### Why TUnit?
-
-Based on comprehensive analysis documented in `docs/test-framework-reliability.md`:
+### Why Go's stdlib testing?
 
 **Performance**:
-- **7.8x faster** than traditional test frameworks
-- Consistent execution time (σ=0.06s)
-- 100% test coverage maintained (370 tests)
+- Native, zero-dependency test runner built into the Go toolchain
+- Parallel tests with `t.Parallel()` for fast execution
+- Consistent execution time
 
-**Hang Detection & Diagnostics**:
-- **Real-time progress reporting** with test name + elapsed time during execution
-- Detects hangs in **30-60 seconds**
-- **Time saved: ~2-4 hours per hang incident**
-- Full async stack traces with context
-- Reliability score: **10/10**
+**Diagnostics**:
+- `go test -v` shows real-time test names and results
+- `-race` flag detects data races at runtime
+- `-timeout` flag prevents hanging tests (default 10 minutes)
+- `t.Log` / `t.Logf` produce output only on failure
 
 **Architecture**:
-- **Async-first design**: All tests use `async Task`, prevents sync-over-async deadlocks
-- **Source generators**: Compile-time test discovery eliminates reflection overhead
-- **Built on Microsoft.Testing.Platform**: Modern, efficient test infrastructure
-- **Native AOT compatible**: Future-proof architecture
+- **Table-driven tests**: Idiomatic Go pattern using `t.Run` subtests for broad input coverage
+- **Same-package tests**: White-box tests in `package X` access unexported identifiers
+- **External tests**: Black-box tests in `package X_test` test the public API
+- **Built-in fuzz testing**: `go test -fuzz` for property-based edge-case coverage
 
 ### Test Configuration
 
-TUnit uses source-generator based discovery with the following configuration:
+Go tests use `TestMain` when per-package setup/teardown is required:
 
-```csharp
-// AssemblyInfo.cs - Parallelization at class level
-[assembly: Parallelize(Workers = 0, Scope = ExecutionScope.ClassLevel)]
+```go
+// TestMain sets up shared test fixtures for the package.
+func TestMain(m *testing.M) {
+    // setup
+    code := m.Run()
+    // teardown
+    os.Exit(code)
+}
+```
 
-// .csproj - Suppressed analyzer warnings for test patterns
-<NoWarn>TUnit0055;TUnitAssertions0003;TUnitAssertions0005;TUnit0038;CA2201;IDE1006</NoWarn>
+Parallelism is controlled per-test:
+```go
+func TestParsePlan(t *testing.T) {
+    t.Parallel() // opt-in per test
+    // ...
+}
 ```
 
 ## Test Types
 
 ### Architecture Tests
 
-Architecture tests automatically enforce layer boundaries and dependency rules to prevent architectural drift and maintain clean separation of concerns.
+Architecture rules are enforced via `golangci-lint` import analysis and Go's built-in `internal/` package visibility enforcement rather than runtime reflection tests.
 
-**Purpose:** Prevent unintended coupling between layers, document architectural rules as executable tests, and catch boundary violations during PR validation before merge.
+**Purpose:** Prevent unintended coupling between packages, document architectural rules, and catch dependency violations during PR validation.
 
-**Test Location:** `src/tests/Oocx.TfPlan2Md.TUnit/Architecture/ArchitectureBoundaryTests.cs`
+**Technology:** `golangci-lint` with `depguard`/`gomodguard`, plus Go toolchain's built-in `internal/` package protection.
 
-**Technology:** [NetArchTest.Rules](https://github.com/BenMorris/NetArchTest) 1.3.2 - A lightweight, test-framework agnostic library for architecture testing in .NET
+**Documentation:** See [docs/architecture-rules.md](architecture-rules.md) for complete layer definitions.
 
-**Documentation:** See [docs/architecture-rules.md](architecture-rules.md) for complete list of layer definitions, dependency rules, and rationale.
+#### Key Package Dependency Rules
 
-#### What Architecture Tests Do
+- `internal/parsing` must NOT import `internal/markdown` (prevents circular dependencies)
+- `internal/markdown` must NOT import `internal/providers` (general rendering independent of providers)
+- `cmd/` packages import `internal/` but `internal/` packages never import `cmd/`
 
-Architecture tests analyze compiled assemblies using .NET reflection to verify:
-
-1. **Layer Dependency Rules** - Enforce which namespaces can depend on which others:
-   - ✅ `Parsing` layer must NOT depend on `MarkdownGeneration` (prevents circular dependencies)
-   - ✅ `Platforms` layer CAN depend on `MarkdownGeneration` (platform-specific rendering uses infrastructure)
-   - ✅ `MarkdownGeneration` layer must NOT depend on `Providers` (general rendering independent of specific providers)
-   - And 7 other dependency rules covering all architectural layers
-
-2. **Naming Conventions** - Verify consistent naming across the codebase:
-   - Exception classes must end with `Exception` suffix
-   - Test classes must end with `Tests` suffix
-   - Interface names must start with `I` prefix
-
-#### Running Architecture Tests
+#### Running Architecture Checks
 
 ```bash
-# Run all architecture tests
-scripts/test-with-timeout.sh -- dotnet test --project src/tests/Oocx.TfPlan2Md.TUnit/ --treenode-filter /*/*/ArchitectureBoundaryTests/*
+# Run linter (includes import dependency analysis)
+golangci-lint run ./...
 
-# Run specific test
-dotnet test --project src/tests/Oocx.TfPlan2Md.TUnit/ --treenode-filter /*/*/ArchitectureBoundaryTests/Parsing_ShouldNotDependOn_MarkdownGeneration
+# Check for import cycles
+go build ./...  # fails on import cycles
+
+# Verify internal/ package protection
+# Any attempt to import internal/ from outside the module fails at compile time
 ```
 
 #### When They Run
 
-- **Locally:** Part of standard `dotnet test` command
-- **CI:** Run automatically on every PR as part of the test suite in `pr-validation.yml`
-- **Execution Time:** ~3 seconds (well under 10-second target)
+- **Locally:** `golangci-lint run ./...` and `go build ./...`
+- **CI:** Run automatically on every PR as part of the lint job in `pr-validation.yml`
 
-#### How Developers Interact with Architecture Tests
+#### How Developers Interact with Architecture Checks
 
-**If a test fails:**
+**If a linter reports a dependency violation:**
 
-1. **Read the error message** - Architecture tests provide clear, actionable error messages with:
-   - Rule statement: What architectural principle was violated
-   - Rationale: Why this rule exists
-   - Violations: Specific types that violate the rule
-   - Guidance: Link to [docs/architecture-rules.md](architecture-rules.md)
-   - ADR reference: [ADR-007](adr-007-architecture-boundary-enforcement.md)
-
-2. **Understand the violation** - Review [docs/architecture-rules.md](architecture-rules.md) to understand the layer structure and allowed dependencies
-
-3. **Fix the violation** - Refactor your code to respect architectural boundaries:
-   - Move code to the appropriate layer
-   - Remove the forbidden dependency
-   - Use allowed dependencies instead
-
-4. **Re-run tests** - Verify the violation is fixed: `dotnet test --project src/tests/Oocx.TfPlan2Md.TUnit/`
-
-**Example Error Message:**
-
-```
-Architecture Violation Detected
-
-Rule: Parsing layer must not depend on MarkdownGeneration
-Violations:
-  - Oocx.TfPlan2Md.Parsing.TerraformPlanParser -> Oocx.TfPlan2Md.MarkdownGeneration.MarkdownRenderer
-
-Rationale: Parsing is a core domain layer responsible for converting Terraform JSON into strongly-typed
-domain models. It must remain independent of rendering concerns to maintain testability and prevent
-circular dependencies.
-
-See docs/architecture-rules.md for complete layer definitions and guidance on architectural boundaries.
-Related: docs/adr-007-architecture-boundary-enforcement.md
-```
-
-#### Known Exemptions
-
-4 files have documented exemptions for architectural violations that require refactoring:
-- 1 file: `Parsing → Platforms` (JSON source generation limitation)
-- 3 files: `MarkdownGeneration → Providers` (AOT script mapping needs refactoring)
-
-These exemptions are documented in the test file with clear justification comments. Tests fail for NEW violations only.
+1. **Read the error message** — `golangci-lint` output identifies the offending import and rule
+2. **Review [docs/architecture-rules.md](architecture-rules.md)** — Understand the package structure
+3. **Fix the violation** — Refactor by introducing a shared interface, moving code to the appropriate package, or using dependency injection
+4. **Re-run checks** — `golangci-lint run ./...`
 
 #### References
 
 - **Layer Definitions:** [docs/architecture-rules.md](architecture-rules.md)
 - **ADR:** [ADR-007: Architecture Boundary Enforcement](adr-007-architecture-boundary-enforcement.md)
-- **Feature Spec:** [Feature 066 Specification](features/066-architecture-boundary-enforcement/specification.md)
-- **NetArchTest.Rules:** [GitHub Repository](https://github.com/BenMorris/NetArchTest)
 
 ### Unit Tests
 
-Test individual components in isolation to verify correct behavior of parsing, model building, markdown rendering, and CLI argument parsing.
+Test individual Go packages in isolation to verify correct behavior of parsing, model building, markdown rendering, and CLI argument parsing. Use table-driven tests with `t.Run` subtests:
+
+```go
+func TestParsePlan_Actions(t *testing.T) {
+    t.Parallel()
+    tests := []struct {
+        name    string
+        fixture string
+        want    []string
+    }{
+        {"create only", "create-only-plan.json", []string{"create"}},
+        {"delete only", "delete-only-plan.json", []string{"delete"}},
+    }
+    for _, tc := range tests {
+        tc := tc
+        t.Run(tc.name, func(t *testing.T) {
+            t.Parallel()
+            plan, err := ParsePlanFile(filepath.Join("testdata", tc.fixture))
+            require.NoError(t, err)
+            // assertions...
+        })
+    }
+}
+```
 
 ### Integration Tests
 
-Test JSON parsing and markdown generation end-to-end. As the application is distributed via Docker, Docker-based integration tests verify the final CLI behavior in a containerized environment.
+Test JSON parsing and markdown generation end-to-end. As the application is distributed via Docker, Docker-based integration tests verify the final CLI behavior in a containerized environment. Tag integration tests with `//go:build integration` to separate them from unit tests:
+
+```go
+//go:build integration
+
+package integration_test
+```
+
+Run integration tests with:
+```bash
+go test -tags=integration -race ./test/...
+```
 
 ### User Acceptance Testing (UAT)
 
@@ -356,13 +336,13 @@ Additional test data files for edge cases:
 
 ## Test Catalog
 
-### CLI Parser Tests (`CLI/CliParserTests.cs`)
+### CLI Parser Tests (`internal/cli/`)
 
-Tests for command-line argument parsing logic.
+Tests for command-line argument parsing logic using Go's `flag`/`cobra` parsing.
 
 For user-facing changes (especially markdown rendering), run UAT in real environments using **temporary pull requests** in:
 
-- GitHub PRs in `oocx/tfplan2md`
+- GitHub PRs in `51nk0r5w1m/tfplan2md-uat`
 - Azure DevOps PRs in `https://dev.azure.com/oocx` (project `test`, repository `test`)
 
 The UAT loop is **comment-driven** and supports both approval and failure detection:
@@ -419,251 +399,176 @@ az devops invoke --area git --resource pullrequestthreads \
   --route-parameters project=test repositoryId=test pullRequestId=<pr-id> \
   --api-version 7.1
 ```
+
 | Test Name | Description |
 |-----------|-------------|
-| `Build_ValidPlan_ReturnsCorrectSummary` | Verifies that the summary correctly counts: 3 to add, 1 to change, 1 to destroy, 1 to replace, 6 total |
-| `Build_ValidPlan_ReturnsCorrectActionSymbols` | Verifies that action symbols are correctly assigned: `➕` for create, `🔄` for update, `❌` for delete, `♻️` for replace |
-| `Build_WithSensitiveValues_MasksByDefault` | Verifies that sensitive values are masked with "(sensitive)" by default |
-| `Build_WithShowSensitiveTrue_DoesNotMask` | Verifies that sensitive values are shown when `showSensitive` is true |
-| `Build_ValidPlan_PreservesTerraformVersion` | Verifies that Terraform and format versions are preserved in the model |
-| `Build_EmptyPlan_ReturnsZeroSummary` | Verifies that an empty plan returns zero counts for all summary fields |
-| `Build_NoOpPlan_CountsNoOpCorrectly` | Verifies that no-op resources are counted correctly in the summary |
-| `Build_MinimalPlan_HandlesNullBeforeAndAfter` | Verifies that plans with null before/after values produce empty attribute changes |
-| `Build_CreateOnlyPlan_CountsCreatesCorrectly` | Verifies that create-only plans are summarized correctly |
-| `Build_DeleteOnlyPlan_CountsDeletesCorrectly` | Verifies that delete-only plans are summarized correctly |
+| `TestBuild_ValidPlan_ReturnsCorrectSummary` | Verifies that the summary correctly counts: 3 to add, 1 to change, 1 to destroy, 1 to replace, 6 total |
+| `TestBuild_ValidPlan_ReturnsCorrectActionSymbols` | Verifies that action symbols are correctly assigned: `➕` for create, `🔄` for update, `❌` for delete, `♻️` for replace |
+| `TestBuild_WithSensitiveValues_MasksByDefault` | Verifies that sensitive values are masked with "(sensitive)" by default |
+| `TestBuild_WithShowSensitiveTrue_DoesNotMask` | Verifies that sensitive values are shown when `showSensitive` is true |
+| `TestBuild_ValidPlan_PreservesTerraformVersion` | Verifies that Terraform and format versions are preserved in the model |
+| `TestBuild_EmptyPlan_ReturnsZeroSummary` | Verifies that an empty plan returns zero counts for all summary fields |
+| `TestBuild_NoOpPlan_CountsNoOpCorrectly` | Verifies that no-op resources are counted correctly in the summary |
+| `TestBuild_MinimalPlan_HandlesNullBeforeAndAfter` | Verifies that plans with null before/after values produce empty attribute changes |
+| `TestBuild_CreateOnlyPlan_CountsCreatesCorrectly` | Verifies that create-only plans are summarized correctly |
+| `TestBuild_DeleteOnlyPlan_CountsDeletesCorrectly` | Verifies that delete-only plans are summarized correctly |
 
-### Markdown Renderer Tests (`MarkdownGeneration/MarkdownRendererTests.cs`)
+### Markdown Renderer Tests (`internal/markdown/`)
 
 Tests for rendering the report model to Markdown output.
 
 | Test Name | Description |
 |-----------|-------------|
-| `Render_ValidPlan_ContainsSummarySection` | Verifies that the rendered output contains a summary section with add/change/destroy indicators and emoji symbols |
-| `Render_ValidPlan_ContainsResourceChanges` | Verifies that all resource addresses appear in the rendered output |
-| `Render_ValidPlan_ContainsTerraformVersion` | Verifies that the Terraform version (1.14.0) appears in the rendered output |
-| `Render_ValidPlan_ContainsActionSymbols` | Verifies that action symbols with resource addresses appear correctly (`➕`, `🔄`, `❌`, `♻️`) |
-| `Render_EmptyPlan_ProducesValidMarkdown` | Verifies that an empty plan renders without errors and shows zero counts |
-| `Render_NoOpPlan_ProducesValidMarkdown` | Verifies that a no-op plan renders correctly with the no-op action displayed |
-| `Render_EmptyPlan_ShowsNoChangesMessage` | Verifies that an empty plan shows "No changes" message in the output |
-| `Render_MinimalPlan_HandlesNullAttributes` | Verifies that resources with null before/after render without attribute details section |
-| `Render_CreateOnlyPlan_ShowsAllCreates` | Verifies that create-only plans render all create operations with correct symbols |
-| `Render_DeleteOnlyPlan_ShowsAllDeletes` | Verifies that delete-only plans render all delete operations with correct symbols |
-| `Render_WithInvalidTemplate_ThrowsMarkdownRenderException` | Verifies that invalid template syntax throws a `MarkdownRenderException` |
-| `Render_AttributeChangesTable_DoesNotContainExtraNewlines` | Verifies that attribute changes table rows are consecutive without blank lines |
-| `Render_CreateOnlyPlan_ShowsAttributeValueTable` | Verifies that create-only plans render two-column `Attribute | Value` tables showing after values |
-| `Render_DeleteOnlyPlan_ShowsAttributeValueTable` | Verifies that delete-only plans render two-column `Attribute | Value` tables showing before values |
-| `Render_ReplacePlan_ShowsBeforeAndAfterColumns` | Verifies that replace operations (create+delete) render a 3-column `Attribute | Before | After` table |
-| `Render_CreatePlan_MasksSensitiveAttributes` | Verifies that sensitive attributes are masked in the create `Value` column by default |
-| `Render_Create_OmitsNullAndUnknownAttributes` | Verifies that null and unknown attributes are omitted from create tables |
-| `Render_Delete_OmitsNullAttributes` | Verifies that null attributes are omitted from delete tables |
-| `Render_LargePlanWithManyNoOpResources_DoesNotExceedIterationLimit` | Verifies that large plans don't exceed Scriban's iteration limit of 1000 |
-| `RenderResourceChange_FirewallRuleCollection_ReturnsResourceSpecificMarkdown` | Verifies that firewall rule collections use the resource-specific template |
-| `Render_FirewallRuleCollection_UsesResourceSpecificTemplate` | Verifies that the full `Render` applies resource-specific templates automatically when available |
-| `RenderResourceChange_FirewallRuleCollection_ShowsAddedRules` | Verifies that added rules are shown with ➕ indicator |
-| `RenderResourceChange_FirewallRuleCollection_ShowsModifiedRules` | Verifies that modified rules are shown with 🔄 indicator |
-| `RenderResourceChange_FirewallRuleCollection_ShowsRemovedRules` | Verifies that removed rules are shown with ❌ indicator |
-| `RenderResourceChange_FirewallRuleCollection_ShowsUnchangedRules` | Verifies that unchanged rules are shown with ⏺️ indicator |
-| `RenderResourceChange_FirewallRuleCollection_Create_ShowsAllRules` | Verifies that new rule collections show all rules being created |
-| `RenderResourceChange_FirewallRuleCollection_Delete_ShowsAllRulesBeingDeleted` | Verifies that deleted rule collections show all rules being removed |
-| `RenderResourceChange_NonFirewallResource_ReturnsNull` | Verifies that resources without specific templates return null for default handling |
-| `RenderResourceChange_FirewallRuleCollection_ContainsRuleDetailsTable` | Verifies the table contains expected columns (Rule Name, Description, Protocols, etc.) and description content |
-| `RenderResourceChange_FirewallRuleCollection_ModifiedDetailsInCollapsible` | Verifies that modified rule details are in a collapsible section |
-| `Render_MultiModulePlan_GroupsModulesAndPreservesOrder` | Verifies that plans with multiple and nested modules are grouped into module sections and that module ordering follows the hierarchy (root first, children after parents) |
-| `Render_MultiModulePlan_HeadingsAndHierarchyAreCorrect` | Verifies module headers use H3 (`### Module: ...`) and resources inside modules use H4 headings (`#### <action> <address>`), and that each resource appears under its module section |
-| `Render_FirewallModifiedRules_ShowsDiffForChangedAttributes` | Verifies that modified firewall rules show before/after diff format with `-` and `+` prefixes for changed attributes |
-| `Render_FirewallModifiedRules_ShowsSingleValueForUnchangedAttributes` | Verifies that unchanged attributes in modified firewall rules show single values without diff formatting |
-| `Render_FirewallNonModifiedRules_DisplayAsExpected` | Verifies that added, removed, and unchanged firewall rules display correctly without diff formatting |
+| `TestRender_ValidPlan_ContainsSummarySection` | Verifies that the rendered output contains a summary section with add/change/destroy indicators and emoji symbols |
+| `TestRender_ValidPlan_ContainsResourceChanges` | Verifies that all resource addresses appear in the rendered output |
+| `TestRender_ValidPlan_ContainsTerraformVersion` | Verifies that the Terraform version (1.14.0) appears in the rendered output |
+| `TestRender_ValidPlan_ContainsActionSymbols` | Verifies that action symbols with resource addresses appear correctly (`➕`, `🔄`, `❌`, `♻️`) |
+| `TestRender_EmptyPlan_ProducesValidMarkdown` | Verifies that an empty plan renders without errors and shows zero counts |
+| `TestRender_NoOpPlan_ProducesValidMarkdown` | Verifies that a no-op plan renders correctly with the no-op action displayed |
+| `TestRender_EmptyPlan_ShowsNoChangesMessage` | Verifies that an empty plan shows "No changes" message in the output |
+| `TestRender_MinimalPlan_HandlesNullAttributes` | Verifies that resources with null before/after render without attribute details section |
+| `TestRender_CreateOnlyPlan_ShowsAllCreates` | Verifies that create-only plans render all create operations with correct symbols |
+| `TestRender_DeleteOnlyPlan_ShowsAllDeletes` | Verifies that delete-only plans render all delete operations with correct symbols |
+| `TestRender_WithInvalidTemplate_ReturnsError` | Verifies that invalid template syntax returns a descriptive error |
+| `TestRender_AttributeChangesTable_DoesNotContainExtraNewlines` | Verifies that attribute changes table rows are consecutive without blank lines |
+| `TestRender_CreateOnlyPlan_ShowsAttributeValueTable` | Verifies that create-only plans render two-column `Attribute \| Value` tables showing after values |
+| `TestRender_DeleteOnlyPlan_ShowsAttributeValueTable` | Verifies that delete-only plans render two-column `Attribute \| Value` tables showing before values |
+| `TestRender_ReplacePlan_ShowsBeforeAndAfterColumns` | Verifies that replace operations (create+delete) render a 3-column `Attribute \| Before \| After` table |
+| `TestRender_CreatePlan_MasksSensitiveAttributes` | Verifies that sensitive attributes are masked in the create `Value` column by default |
+| `TestRender_Create_OmitsNullAndUnknownAttributes` | Verifies that null and unknown attributes are omitted from create tables |
+| `TestRender_Delete_OmitsNullAttributes` | Verifies that null attributes are omitted from delete tables |
+| `TestRenderResourceChange_FirewallRuleCollection_ReturnsResourceSpecificMarkdown` | Verifies that firewall rule collections use the resource-specific renderer |
+| `TestRenderResourceChange_FirewallRuleCollection_ShowsAddedRules` | Verifies that added rules are shown with ➕ indicator |
+| `TestRenderResourceChange_FirewallRuleCollection_ShowsModifiedRules` | Verifies that modified rules are shown with 🔄 indicator |
+| `TestRenderResourceChange_FirewallRuleCollection_ShowsRemovedRules` | Verifies that removed rules are shown with ❌ indicator |
+| `TestRender_MultiModulePlan_GroupsModulesAndPreservesOrder` | Verifies that plans with multiple and nested modules are grouped into module sections |
+| `TestRender_MultiModulePlan_HeadingsAndHierarchyAreCorrect` | Verifies module headers use H3 and resources inside modules use H4 headings |
+| `TestRender_FirewallModifiedRules_ShowsDiffForChangedAttributes` | Verifies that modified firewall rules show before/after diff format with `-` and `+` prefixes |
 
-### Scriban Helpers Tests (`MarkdownGeneration/ScribanHelpersTests.cs`)
+### Renderer Helper Tests (`internal/markdown/helpers/`)
 
-Tests for the custom Scriban helper functions used in templates.
+Tests for the rendering helper functions used to produce diffs and formatted values.
 
 | Test Name | Description |
 |-----------|-------------|
-| `DiffArray_WithAddedItems_ReturnsAddedCollection` | Verifies that items present only in the after array are returned as added |
-| `DiffArray_WithRemovedItems_ReturnsRemovedCollection` | Verifies that items present only in the before array are returned as removed |
-| `DiffArray_WithModifiedItems_ReturnsModifiedCollectionWithBeforeAndAfter` | Verifies that items with changed values are returned with both before and after states |
-| `DiffArray_WithUnchangedItems_ReturnsUnchangedCollection` | Verifies that identical items are returned as unchanged |
-| `DiffArray_WithMixedChanges_ReturnsAllCategories` | Verifies that mixed add/remove/modify/unchanged scenarios are handled correctly |
-| `DiffArray_WithEmptyBeforeArray_ReturnsAllAsAdded` | Verifies that all items are added when before array is empty |
-| `DiffArray_WithEmptyAfterArray_ReturnsAllAsRemoved` | Verifies that all items are removed when after array is empty |
-| `DiffArray_WithNullBeforeArray_ReturnsAllAsAdded` | Verifies that null before array is handled as empty |
-| `DiffArray_WithNullAfterArray_ReturnsAllAsRemoved` | Verifies that null after array is handled as empty |
-| `DiffArray_WithMissingKeyProperty_ThrowsScribanHelperException` | Verifies that missing key property throws descriptive exception |
-| `DiffArray_WithNestedArrays_ComparesCorrectly` | Verifies that nested array changes are detected |
-| `DiffArray_WithNestedObjects_ComparesCorrectly` | Verifies that nested object changes are detected |
-| `RegisterHelpers_AddsDiffArrayFunction` | Verifies that `diff_array` function is registered with ScriptObject |
+| `TestDiffSlice_WithAddedItems_ReturnsAddedCollection` | Verifies that items present only in the after slice are returned as added |
+| `TestDiffSlice_WithRemovedItems_ReturnsRemovedCollection` | Verifies that items present only in the before slice are returned as removed |
+| `TestDiffSlice_WithModifiedItems_ReturnsModifiedCollectionWithBeforeAndAfter` | Verifies that items with changed values are returned with both before and after states |
+| `TestDiffSlice_WithUnchangedItems_ReturnsUnchangedCollection` | Verifies that identical items are returned as unchanged |
+| `TestDiffSlice_WithMixedChanges_ReturnsAllCategories` | Verifies that mixed add/remove/modify/unchanged scenarios are handled correctly |
+| `TestDiffSlice_WithEmptyBeforeSlice_ReturnsAllAsAdded` | Verifies that all items are added when before slice is nil/empty |
+| `TestDiffSlice_WithEmptyAfterSlice_ReturnsAllAsRemoved` | Verifies that all items are removed when after slice is nil/empty |
+| `TestDiffSlice_WithMissingKeyField_ReturnsError` | Verifies that missing key field returns a descriptive error |
+| `TestFormatDiff_EqualStrings_ReturnsSingleValue` | Verifies that equal before and after values return the value as-is without diff formatting |
+| `TestFormatDiff_DifferentStrings_ReturnsDiffFormat` | Verifies that different values return `"- before<br>+ after"` format |
+| `TestFormatDiff_NilBefore_ReturnsDiffFormat` | Verifies that nil before value is treated as empty string in diff format |
+| `TestFormatDiff_NilAfter_ReturnsDiffFormat` | Verifies that nil after value is treated as empty string in diff format |
+| `TestFormatDiff_BothNil_ReturnsEmptyString` | Verifies that both nil values return empty string |
 
-### Scriban Helpers Format Diff Tests (`MarkdownGeneration/ScribanHelpersFormatDiffTests.cs`)
+### Docker Integration Tests (`test/integration/`)
 
-Tests for the `format_diff` helper function used to display before/after values in templates.
-
-| Test Name | Description |
-|-----------|-------------|
-| `FormatDiff_EqualStrings_ReturnsSingleValue` | Verifies that equal before and after values return the value as-is without diff formatting |
-| `FormatDiff_DifferentStrings_ReturnsDiffFormat` | Verifies that different values return `"- before<br>+ after"` format |
-| `FormatDiff_NullBefore_ReturnsDiffFormat` | Verifies that null before value is treated as empty string in diff format |
-| `FormatDiff_NullAfter_ReturnsDiffFormat` | Verifies that null after value is treated as empty string in diff format |
-| `FormatDiff_BothNull_ReturnsEmptyString` | Verifies that both null values return empty string |
-| `FormatDiff_EmptyStrings_HandledCorrectly` | Verifies that empty strings are handled correctly and distinguished from null |
-
-### Docker Integration Tests (`Docker/DockerIntegrationTests.cs`)
-
-End-to-end integration tests that run the application in a Docker container. These tests are skippable when Docker is unavailable.
+End-to-end integration tests that run the application in a Docker container. Tagged with `//go:build integration` and skipped when Docker is unavailable.
 
 | Test Name | Description |
 |-----------|-------------|
-| `Docker_WithFileInput_ProducesMarkdownOutput` | Verifies that the container correctly processes a plan file mounted as a volume and produces valid Markdown output |
-| `Docker_WithStdinInput_ProducesMarkdownOutput` | Verifies that the container correctly processes plan JSON from stdin and produces valid Markdown output |
-| `Docker_WithHelpFlag_DisplaysHelp` | Verifies that the `--help` flag displays usage information in the container |
-| `Docker_WithVersionFlag_DisplaysVersion` | Verifies that the `--version` flag displays version information in the container |
-| `Docker_WithInvalidInput_ReturnsNonZeroExitCode` | Verifies that invalid JSON input results in a non-zero exit code and error message |
-| `Docker_ParsesAllResourceChanges` | Verifies that all expected resources from the test data appear in the container's output |
-### Markdown Lint Integration Tests (`MarkdownGeneration/MarkdownLintIntegrationTests.cs`)
+| `TestDocker_WithFileInput_ProducesMarkdownOutput` | Verifies that the container correctly processes a plan file mounted as a volume and produces valid Markdown output |
+| `TestDocker_WithStdinInput_ProducesMarkdownOutput` | Verifies that the container correctly processes plan JSON from stdin and produces valid Markdown output |
+| `TestDocker_WithHelpFlag_DisplaysHelp` | Verifies that the `--help` flag displays usage information in the container |
+| `TestDocker_WithVersionFlag_DisplaysVersion` | Verifies that the `--version` flag displays version information in the container |
+| `TestDocker_WithInvalidInput_ReturnsNonZeroExitCode` | Verifies that invalid JSON input results in a non-zero exit code and error message |
 
-Docker-based integration tests that run the actual markdownlint-cli2 tool to validate markdown output. These tests use the `davidanson/markdownlint-cli2:v0.20.0` Docker image to ensure consistent validation across all environments.
+### Markdown Lint Integration Tests (`test/integration/`)
 
-| Test Name | Description |
-|-----------|-------------|
-| `Lint_ComprehensiveDemo_PassesAllRules` | Verifies the comprehensive demo output passes all markdownlint rules |
-| `Lint_AllTestPlans_PassAllRules` | Verifies all test plans in TestData produce valid markdown |
-| `Lint_SummaryTemplate_PassesAllRules` | Verifies the summary template produces valid markdown |
-| `Lint_BreakingPlan_PassesAllRules` | Verifies markdown with special characters passes linting |
-
-### Markdown Invariant Tests (`MarkdownGeneration/MarkdownInvariantTests.cs`)
-
-Property-based tests that verify markdown invariants that must ALWAYS hold, regardless of input. These tests define the "contract" of valid markdown output.
+Docker-based integration tests that run the actual markdownlint-cli2 tool to validate markdown output. Use the `davidanson/markdownlint-cli2` Docker image for consistent validation.
 
 | Test Name | Description |
 |-----------|-------------|
-| `Invariant_NoConsecutiveBlankLines_AllPlans` | MD012: Verifies no plan produces more than one consecutive blank line |
-| `Invariant_NoConsecutiveBlankLines_ComprehensiveDemo` | MD012: Specific check for comprehensive demo |
-| `Invariant_AllTablesParseCorrectly_AllPlans` | Verifies all tables parse correctly with Markdig |
-| `Invariant_NoBlankLinesBetweenTableRows_AllPlans` | Verifies table rows are consecutive without blank lines |
-| `Invariant_NoRawNewlinesInTableCells_AllPlans` | Verifies no raw newlines exist inside table cells |
-| `Invariant_PipesEscapedInTableCells_BreakingPlan` | Verifies pipes are escaped in table cells |
-| `Invariant_NewlinesConvertedToBr_BreakingPlan` | Verifies newlines are converted to `<br/>` |
-| `Invariant_HeadingsSurroundedByBlankLines_AllPlans` | Verifies headings have proper spacing |
-| `Invariant_DetailsTagsBalanced_AllPlans` | Verifies all `<details>` tags are properly closed |
-| `Invariant_SummaryTagsBalanced_AllPlans` | Verifies all `<summary>` tags are properly closed |
-| `Invariant_HasTerraformPlanHeading_AllPlans` | Verifies every plan has a Terraform Plan heading |
-| `Invariant_HasSummarySection_NonEmptyPlans` | Verifies non-empty plans have a Summary section |
+| `TestLint_ComprehensiveDemo_PassesAllRules` | Verifies the comprehensive demo output passes all markdownlint rules |
+| `TestLint_AllTestPlans_PassAllRules` | Verifies all test plans in testdata produce valid markdown |
+| `TestLint_SummaryTemplate_PassesAllRules` | Verifies the summary template produces valid markdown |
 
-### Markdown Snapshot Tests (`MarkdownGeneration/MarkdownSnapshotTests.cs`)
+### Markdown Invariant Tests (`internal/markdown/`)
 
-Golden file tests that detect unexpected changes in markdown output by comparing against approved baselines.
+Table-driven tests that verify markdown invariants that must ALWAYS hold, regardless of input.
 
 | Test Name | Description |
 |-----------|-------------|
-| `Snapshot_ComprehensiveDemo_MatchesBaseline` | Verifies comprehensive demo matches stored snapshot |
-| `Snapshot_SummaryTemplate_MatchesBaseline` | Verifies summary template matches stored snapshot |
-| `Snapshot_BreakingPlan_MatchesBaseline` | Verifies breaking plan (special chars) matches stored snapshot |
-| `Snapshot_RoleAssignments_MatchesBaseline` | Verifies role assignment rendering matches stored snapshot |
-| `Snapshot_FirewallRules_MatchesBaseline` | Verifies firewall rule rendering matches stored snapshot |
-| `Snapshot_MultiModule_MatchesBaseline` | Verifies multi-module plan matches stored snapshot |
+| `TestInvariant_NoConsecutiveBlankLines` | MD012: Verifies no plan produces more than one consecutive blank line |
+| `TestInvariant_AllTablesParseable` | Verifies all tables parse correctly |
+| `TestInvariant_NoBlankLinesBetweenTableRows` | Verifies table rows are consecutive without blank lines |
+| `TestInvariant_NoRawNewlinesInTableCells` | Verifies no raw newlines exist inside table cells |
+| `TestInvariant_PipesEscapedInTableCells` | Verifies pipes are escaped in table cells |
+| `TestInvariant_HeadingsSurroundedByBlankLines` | Verifies headings have proper spacing |
+| `TestInvariant_DetailsTagsBalanced` | Verifies all `<details>` tags are properly closed |
+| `TestInvariant_HasTerraformPlanHeading` | Verifies every plan has a Terraform Plan heading |
+| `TestInvariant_HasSummarySection_NonEmptyPlans` | Verifies non-empty plans have a Summary section |
 
-### Template Isolation Tests (`MarkdownGeneration/TemplateIsolationTests.cs`)
+### Markdown Snapshot Tests (`internal/markdown/`)
 
-Tests that verify each template produces valid markdown with controlled inputs. These tests isolate template behavior from full plan complexity.
-
-| Test Name | Description |
-|-----------|-------------|
-| `DefaultTemplate_CreateAction_ProducesValidMarkdown` | Verifies default template with create actions |
-| `DefaultTemplate_DeleteAction_ProducesValidMarkdown` | Verifies default template with delete actions |
-| `DefaultTemplate_EmptyPlan_ProducesValidMarkdown` | Verifies default template with empty plans |
-| `DefaultTemplate_SpecialCharacters_EscapesCorrectly` | Verifies special character escaping |
-| `RoleAssignmentTemplate_WithPrincipals_ProducesValidMarkdown` | Verifies role assignment template |
-| `RoleAssignmentTemplate_WithoutPrincipals_ProducesValidMarkdown` | Verifies role assignment without principal mapping |
-| `RoleAssignmentTemplate_NoBlankLinesBetweenTableRows` | Verifies no blank lines in role assignment tables |
-| `FirewallTemplate_RuleChanges_ProducesValidMarkdown` | Verifies firewall template |
-| `FirewallTemplate_ShowsRuleComparison` | Verifies firewall rule comparison display |
-| `SummaryTemplate_ProducesValidMarkdown` | Verifies summary template |
-| `SummaryTemplate_EmptyPlan_ProducesValidMarkdown` | Verifies summary template with empty plans |
-| `MultiModule_ProperHeadingHierarchy` | Verifies multi-module heading hierarchy |
-
-### Markdown Fuzz Tests (`MarkdownGeneration/MarkdownFuzzTests.cs`)
-
-Fuzz testing with random/edge-case inputs to find escaping bugs and edge cases that break markdown rendering.
+Golden file tests that detect unexpected changes in markdown output by comparing against approved baselines stored in `testdata/snapshots/`.
 
 | Test Name | Description |
 |-----------|-------------|
-| `Fuzz_PipeInResourceName_EscapedCorrectly` (Theory) | Verifies pipe escaping in resource names |
-| `Fuzz_AsterisksInValues_RenderedCorrectly` (Theory) | Verifies asterisks remain readable while tables stay valid |
-| `Fuzz_UnderscoresInValues_EscapedCorrectly` (Theory) | Verifies underscores remain readable in table cells |
-| `Fuzz_BracketsInValues_EscapedCorrectly` (Theory) | Verifies bracket escaping |
-| `Fuzz_HashInValues_EscapedCorrectly` (Theory) | Verifies hash symbol handling |
-| `Fuzz_BackticksInValues_EscapedCorrectly` (Theory) | Verifies backtick escaping |
-| `Fuzz_NewlinesInValues_ConvertedToBr` (Theory) | Verifies newline conversion |
-| `Fuzz_UnicodeInValues_HandledCorrectly` (Theory) | Verifies Unicode character handling |
-| `Fuzz_LongValues_DontBreakTables` (Theory) | Verifies long values don't break tables |
-| `Fuzz_LongResourceNames_DontBreakTables` (Theory) | Verifies long names don't break tables |
-| `Fuzz_EmptyValues_DontBreakTables` | Verifies empty value handling |
-| `Fuzz_WhitespaceValues_DontBreakTables` (Theory) | Verifies whitespace-only value handling |
-| `Fuzz_CombinedSpecialChars_AllEscaped` (Theory) | Verifies combined special characters |
-| `Fuzz_RandomPlans_ProduceValidMarkdown` | Generates random plans and validates output |
+| `TestSnapshot_ComprehensiveDemo_MatchesBaseline` | Verifies comprehensive demo matches stored snapshot |
+| `TestSnapshot_SummaryTemplate_MatchesBaseline` | Verifies summary template matches stored snapshot |
+| `TestSnapshot_FirewallRules_MatchesBaseline` | Verifies firewall rule rendering matches stored snapshot |
+| `TestSnapshot_MultiModule_MatchesBaseline` | Verifies multi-module plan matches stored snapshot |
 
-### Style Guide Compliance Tests (`MarkdownGeneration/StyleGuideComplianceTests.cs`)
+### Fuzz Tests (`internal/markdown/`, `internal/parsing/`)
 
-Automated validation of generated markdown against the [Report Style Guide](report-style-guide.md). These tests scan all snapshot files to detect style guide violations and prevent regressions.
+Fuzz testing with random/edge-case inputs using Go's built-in `testing/fuzz`.
 
-**Purpose:** Ensure all generated markdown complies with documented formatting standards for consistency, readability, and professional appearance.
+```bash
+# Run fuzz tests (in src-go/)
+go test ./internal/markdown/... -fuzz=FuzzRender -fuzztime=60s
+go test ./internal/parsing/... -fuzz=FuzzParsePlan -fuzztime=60s
+```
 
-**Test Location:** `src/tests/Oocx.TfPlan2Md.TUnit/MarkdownGeneration/StyleGuideComplianceTests.cs`
+| Fuzz Target | Description |
+|-------------|-------------|
+| `FuzzRender` | Fuzz markdown rendering with arbitrary plan inputs |
+| `FuzzParsePlan` | Fuzz plan JSON parsing with arbitrary byte sequences |
+| `FuzzEscapeMarkdown` | Fuzz markdown escaping with arbitrary strings |
 
-**Related Issue:** [Issue 086](issues/086-style-guide-compliance-fixes/issue-analysis.md) - Style Guide Compliance Fixes
+### Style Guide Compliance Tests (`internal/markdown/`)
+
+Automated validation of generated markdown against the [Report Style Guide](report-style-guide.md). These tests scan all snapshot files to detect style guide violations.
 
 **Running Compliance Tests:**
 ```bash
-# Run all compliance tests
-dotnet test --project src/tests/Oocx.TfPlan2Md.TUnit/ --treenode-filter /*/*/StyleGuideComplianceTests/*
-
-# Run specific compliance test
-dotnet test --project src/tests/Oocx.TfPlan2Md.TUnit/ --treenode-filter /*/*/StyleGuideComplianceTests/Test_AzApiResourceNames_NotEmpty
+go test -run TestStyleGuide ./internal/markdown/...
+go test -run TestStyleGuide/AzApiResourceNames ./internal/markdown/...
 ```
-
-#### Compliance Test Methods
 
 | Test Name | Description |
 |-----------|-------------|
-| `Test_AzApiResourceNames_NotEmpty` | Detects empty `<b></b>` tags in resource summaries (high severity) |
-| `Test_WrenchIcon_HasNonBreakingSpace` | Validates non-breaking space before 🔧 icon in changed attribute summaries |
-| `Test_TagsHeader_HasIcon` | Ensures tags headers include 🏷️ emoji per style guide |
-| `Test_ModuleHeaders_HavePackageIcon` | Validates 📦 icon in module headers |
-| `Test_NoH3HeadingsInDetails` | Prevents H3 headings inside `<details>` blocks (heading hierarchy violation) |
-| `Test_AttributeNamesNotInBackticks` | Ensures attribute names are plain text, not code-formatted (validates "Labels are Text" principle) |
+| `TestStyleGuide/AzApiResourceNames_NotEmpty` | Detects empty `<b></b>` tags in resource summaries (high severity) |
+| `TestStyleGuide/WrenchIcon_HasNonBreakingSpace` | Validates non-breaking space before 🔧 icon in changed attribute summaries |
+| `TestStyleGuide/TagsHeader_HasIcon` | Ensures tags headers include 🏷️ emoji per style guide |
+| `TestStyleGuide/ModuleHeaders_HavePackageIcon` | Validates 📦 icon in module headers |
+| `TestStyleGuide/NoH3HeadingsInDetails` | Prevents H3 headings inside `<details>` blocks |
+| `TestStyleGuide/AttributeNamesNotInBackticks` | Ensures attribute names are plain text, not code-formatted |
 
 **How These Tests Work:**
 
-1. **Scan all snapshot files** - Tests examine every `.verified.md` file in the test suite
-2. **Pattern-based detection** - Use regex patterns to find style guide violations
+1. **Scan all snapshot files** - Tests examine every `.golden.md` file in `testdata/snapshots/`
+2. **Pattern-based detection** - Use `regexp` patterns to find style guide violations
 3. **Generic validation** - Not tied to specific resources; works across all templates and providers
 4. **Clear error messages** - Report exact violation locations and expected patterns
 
 **When Tests Fail:**
 
-1. Review the error message - shows which files violate which style guide rule
-2. Check [docs/report-style-guide.md](report-style-guide.md) - understand the violated rule
+1. Review the error message — shows which files violate which style guide rule
+2. Check [docs/report-style-guide.md](report-style-guide.md) — understand the violated rule
 3. Fix the implementation:
-   - Update templates in `src/Oocx.TfPlan2Md/MarkdownGeneration/Templates/` or `src/Oocx.TfPlan2Md/Providers/{Provider}/Templates/`
-   - Update helper functions in `src/Oocx.TfPlan2Md/MarkdownGeneration/Helpers/`
+   - Update Go template strings in `internal/markdown/templates/` or `internal/providers/{name}/templates/`
+   - Update helper functions in `internal/markdown/helpers/`
 4. Regenerate test snapshots if the fix changes expected output
 5. Re-run compliance tests to verify the fix
 
-**Example Violation Detection:**
-
-```
-Test_AzApiResourceNames_NotEmpty failed:
-  Found 3 empty resource names in summaries:
-    - artifacts/azapi-create-demo.verified.md:23
-    - artifacts/azapi-update-demo.verified.md:45
-    
-  Expected: <b><code>resourceName</code></b>
-  Found:    <b></b>
-```
-
 **Benefits:**
 
-- **Prevents regressions** - New templates must pass style guide checks
-- **Automated validation** - No manual verification needed
-- **Consistency enforcement** - All generated markdown follows same standards
-- **Documentation as tests** - Tests serve as executable specification of the style guide
+- **Prevents regressions** — New templates must pass style guide checks
+- **Automated validation** — No manual verification needed
+- **Consistency enforcement** — All generated markdown follows same standards
+- **Documentation as tests** — Tests serve as executable specification of the style guide

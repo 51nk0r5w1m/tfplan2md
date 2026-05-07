@@ -65,7 +65,7 @@ body:
       label: Additional context
       description: |
         Anything else that might help? Examples:
-        - Environment (OS, Docker version, .NET version, etc.)
+        - Environment (OS, Docker version, Go version, etc.)
         - Screenshots
         - Related issues
         - How you're using tfplan2md (CI/CD, local dev, etc.)

@@ -84,9 +84,8 @@ Use the `git-rebase-main` skill.
 # If script fails with "Artifact is outdated":
 scripts/generate-demo-artifacts.sh
 
-# For feature-specific artifacts:
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
-  [your args] --output artifacts/<feature-specific>.md
+# For feature-specific artifacts (using the Go binary):
+./tfplan2md [your args] --output artifacts/<feature-specific>.md
 ```
 
 ## Troubleshooting

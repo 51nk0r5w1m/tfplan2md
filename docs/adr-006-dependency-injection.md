@@ -1,8 +1,12 @@
 # ADR-006: Dependency Injection Strategy
 
+> **Note:** This ADR documents the design decisions made for the **legacy .NET/C# implementation**.
+> The Go port (see ADR-012) uses standard Go patterns: explicit dependency wiring in `main.go`,
+> constructor functions, and interface-based abstractions — no DI framework required.
+
 ## Status
 
-Accepted
+Accepted (legacy .NET implementation)
 
 ## Context
 

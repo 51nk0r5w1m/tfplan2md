@@ -28,15 +28,18 @@ SELECTOR=""
 TARGET_RESOURCE_ID=""
 OPEN_DETAILS_SELECTOR="details"
 
-# run_screenshotter: wraps dotnet run with xvfb-run when available.
-# Playwright's new headless Chromium requires a compositor context to render screenshots.
-# xvfb-run provides a virtual framebuffer that satisfies this requirement in
-# server/CI environments where the primary display (:0) may not be accessible.
+# run_screenshotter: wraps the Go screenshotgenerator binary with xvfb-run when available.
+# Playwright's headless Chromium requires a compositor context in server/CI environments.
 run_screenshotter() {
+    local binary="$REPO_ROOT/src-go/screenshotgenerator"
+    if [[ ! -x "$binary" ]]; then
+        echo "Building screenshotgenerator..."
+        (cd "$REPO_ROOT/src-go" && go build -o screenshotgenerator ./tools/screenshotgenerator)
+    fi
     if command -v xvfb-run &>/dev/null; then
-        xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" dotnet run "$@"
+        xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" "$binary" "$@"
     else
-        dotnet run "$@"
+        "$binary" "$@"
     fi
 }
 
@@ -188,8 +191,15 @@ if [[ -z "$MARKDOWN_FILE" ]]; then
     if [[ -f "$ANALYSIS_DIR/analysis.sarif" ]]; then
         EXTRA_ARGS="--code-analysis-results $ANALYSIS_DIR/analysis.sarif"
     fi
-    
-    dotnet run --project "$REPO_ROOT/src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj" -- \
+
+    # Build Go binary if not already built
+    TFPLAN2MD_BIN="$REPO_ROOT/src-go/tfplan2md"
+    if [[ ! -x "$TFPLAN2MD_BIN" ]]; then
+        echo "Building tfplan2md..."
+        (cd "$REPO_ROOT/src-go" && go build -o tfplan2md ./cmd/tfplan2md)
+    fi
+
+    "$TFPLAN2MD_BIN" \
         $EXTRA_ARGS \
         --output "$MARKDOWN_FILE" \
         "$REPO_ROOT/$PLAN_FILE"
@@ -201,17 +211,16 @@ echo "Generating HTML for $RENDER_TARGET rendering..."
 MARKDOWN_BASENAME="$(basename "$MARKDOWN_FILE" .md)"
 HTML_FILE="$REPO_ROOT/artifacts/${MARKDOWN_BASENAME}.${RENDER_TARGET}.html"
 
-# Generate HTML with appropriate template
-if [[ "$RENDER_TARGET" == "azdo" ]]; then
-    TEMPLATE="$REPO_ROOT/src/tools/Oocx.TfPlan2Md.HtmlRenderer/templates/azdo-wrapper.html"
-else
-    TEMPLATE="$REPO_ROOT/src/tools/Oocx.TfPlan2Md.HtmlRenderer/templates/github-wrapper-light.html"
+# Build htmlrenderer if not already built
+HTMLRENDERER_BIN="$REPO_ROOT/src-go/htmlrenderer"
+if [[ ! -x "$HTMLRENDERER_BIN" ]]; then
+    echo "Building htmlrenderer..."
+    (cd "$REPO_ROOT/src-go" && go build -o htmlrenderer ./tools/htmlrenderer)
 fi
 
-dotnet run --project "$REPO_ROOT/src/tools/Oocx.TfPlan2Md.HtmlRenderer" -- \
+"$HTMLRENDERER_BIN" \
     --input "$MARKDOWN_FILE" \
     --flavor "$RENDER_TARGET" \
-    --template "$TEMPLATE" \
     --output "$HTML_FILE"
 
 # Build target arguments for ScreenshotGenerator
@@ -245,7 +254,7 @@ for attempt in $(seq 1 $MAX_RETRIES); do
         sleep $RETRY_DELAY
     fi
     
-    if run_screenshotter --project "$REPO_ROOT/src/tools/Oocx.TfPlan2Md.ScreenshotGenerator" -- \
+    if run_screenshotter \
         --input "$HTML_FILE" \
         --output "$OUTPUT_FILE" \
         --width "$WIDTH" \

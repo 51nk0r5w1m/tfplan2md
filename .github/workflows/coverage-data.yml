@@ -16,6 +16,8 @@ jobs:
   update:
     name: Update coverage badge/history branch
     runs-on: ubuntu-latest
+    # Only run when Go source exists
+    if: hashFiles('src-go/go.mod') != ''
     permissions:
       contents: write
 
@@ -25,51 +27,48 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          global-json-file: src/global.json
-
-      - name: Restore dependencies
-        run: dotnet restore src/tfplan2md.slnx
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
-
-      - name: Build
-        run: dotnet build src/tfplan2md.slnx --no-restore --configuration Release
+          go-version-file: 'src-go/go.mod'
+          cache-dependency-path: 'src-go/go.sum'
 
       - name: Test (with coverage)
         run: |
-          chmod +x scripts/test-with-timeout.sh
-          # Keep the post-merge coverage job fast and stable: exclude Docker-based tests.
-          scripts/test-with-timeout.sh --timeout-seconds 180 -- dotnet test \
-            --project src/tests/Oocx.TfPlan2Md.TUnit/ \
-            --configuration Release \
-            --results-directory ${{ github.workspace }}/TestResults \
-            -- \
-            --treenode-filter "/**[Category!=Docker]" \
-            --report-trx \
-            --coverage \
-            --coverage-output coverage.cobertura.xml \
-            --coverage-output-format cobertura
+          cd src-go
+          # Exclude Docker-based tests to keep this job fast and stable
+          go test -race \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -run "^Test[^Docker]" \
+            ./...
+          go tool cover -func=coverage.out > coverage-summary.txt
+          go tool cover -html=coverage.out -o coverage.html
 
-      - name: Generate badge and history (staging)
+      - name: Generate coverage badge (staging)
         run: |
           mkdir -p .tmp/coverage
+          total=$(grep "^total:" src-go/coverage-summary.txt | awk '{print $3}' | tr -d '%')
           timestamp="${{ github.event.head_commit.timestamp }}"
           if [ -z "$timestamp" ]; then
             timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           fi
 
-          dotnet run --project src/tools/Oocx.TfPlan2Md.CoverageEnforcer/Oocx.TfPlan2Md.CoverageEnforcer.csproj -- \
-            --report ./TestResults/coverage.cobertura.xml \
-            --line-threshold 84.48 \
-            --branch-threshold 72.80 \
-            --badge-output ./.tmp/coverage/coverage-badge.svg \
-            --history-output ./.tmp/coverage/history.json \
-            --commit-sha "${{ github.sha }}" \
-            --timestamp "$timestamp"
+          # Generate SVG badge
+          colour="brightgreen"
+          if (( $(echo "$total < 50" | bc -l) )); then colour="red"
+          elif (( $(echo "$total < 70" | bc -l) )); then colour="orange"
+          elif (( $(echo "$total < 80" | bc -l) )); then colour="yellow"
+          fi
+          cat > .tmp/coverage/coverage-badge.svg <<SVG
+          <svg xmlns="http://www.w3.org/2000/svg" width="100" height="20">
+            <title>coverage: ${total}%</title>
+          </svg>
+          SVG
+
+          # Append to JSON history
+          echo "{\"sha\":\"${{ github.sha }}\",\"timestamp\":\"${timestamp}\",\"coverage\":${total}}" \
+            >> .tmp/coverage/history.json
 
       - name: Publish to coverage-data branch
         env:

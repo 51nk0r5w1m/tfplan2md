@@ -1,5 +1,9 @@
 # ADR-010: Evaluate Removing Scriban in Favor of Pure C# Rendering
 
+> **Note:** This ADR documents a design decision for the **legacy .NET/C# implementation**.
+> The Go port (see ADR-012) may supersede or adapt this decision.
+
+
 ## Status
 
 Proposed
