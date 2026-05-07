@@ -135,17 +135,18 @@ Note: `docs/agents.md` is a helpful index, but `.github/skills/` is the authorit
 ## Fixing Bugs
 - Before you fix a bug, you always must first create at least one test that catches the incorrect behavior. Do not start fixing the bug before you were able to detect the bug with a test.
   
-## Code Style Perferences
-- Follow the Common C# Coding conventions ([code style](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions))
-- Use `_camelCase` naming convention for private fields (e.g., `private readonly bool _showSensitive`)
-- Prefer immutable data structures (`IReadOnlyList<T>`, `IReadOnlyDictionary<K,V>`) over mutable types (`List<T>`, `Dictionary<K,V>`) when modification is not required
-- Prefer modern C# language features when they improve readability:
-  - Collection expressions: `List<string> items = [];` instead of `new List<string>()`
-  - Primary constructors for simple dependency injection
-  - Pattern matching with `is`, `is not`, `and`, `or`
-  - Target-typed `new()` when type is apparent
-  - Expression-bodied members for simple single-line implementations
-- Code Style enforcement must be automated (pre-commit hooks, CI/CD checks, .editorconfig etc.)
+## Code Style Preferences
+- Follow the [Effective Go](https://go.dev/doc/effective_go) and [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments) conventions
+- Use `camelCase` for unexported identifiers, `PascalCase` for exported identifiers
+- Prefer value receivers unless the method mutates state or the struct is large (use pointer receivers consistently per type)
+- Prefer immutable patterns: return new values rather than mutating inputs; use `[]T` slices with `append` patterns rather than mutable collections
+- Prefer modern Go idioms when they improve readability:
+  - `errors.Is` / `errors.As` for error comparisons (never `==` on error strings)
+  - `fmt.Errorf("...: %w", err)` for error wrapping
+  - `context.Context` as the first parameter for all blocking/long-running functions
+  - Named return values only when they significantly improve clarity
+  - Table-driven tests with `t.Run` subtests
+- Code Style enforcement must be automated (pre-commit hooks running `gofmt -l`, CI running `golangci-lint`)
 
 ## Terminal Command Guidelines
 
@@ -161,8 +162,8 @@ Note: `docs/agents.md` is a helpful index, but `.github/skills/` is the authorit
   - For `gh`: Use `GH_PAGER=cat GH_FORCE_TTY=false gh ...` or `export GH_PAGER=cat GH_FORCE_TTY=false`.
   - For `az`: Use `AZURE_CORE_PAGER=cat az ...` or `export AZURE_CORE_PAGER=cat`.
   - For general tools: Use `export PAGER=cat`.
-- **NEVER call `dotnet test` directly**: Use the `run-dotnet-tests` skill for all test execution. .NET 10 has two test runners (VSTest and Microsoft.Testing.Platform) that activate based on `global.json` location. Direct calls from the repo root use VSTest mode, which fails with `MSB1001: Unknown switch` errors. The skill provides complete instructions for using the `scripts/test-with-timeout.sh` wrapper.
-- **Snapshot updates**: Snapshot diffs (files under `src/tests/Oocx.TfPlan2Md.Tests/TestData/Snapshots/`) must be intentional.
+- **NEVER call `go test` or `golangci-lint` without the wrapper**: Use `scripts/test-with-timeout.sh` for all test execution to prevent hanging tests. Run `go test ./...` from within `src-go/` or pass the module path explicitly. For linting, run `golangci-lint run ./...` from `src-go/`.
+- **Snapshot updates**: Snapshot diffs (files under `src-go/testdata/snapshots/` or equivalent) must be intentional.
   - Include the token `SNAPSHOT_UPDATE_OK` in at least one commit message in the PR and explain why the snapshot changes are correct.
   - To regenerate snapshots intentionally, use `scripts/update-test-snapshots.sh`.
 - **Asking questions**: 

@@ -1,14 +1,14 @@
 # Project specification
 
 ## Project Overview
-`tfplan2md` is a CLI tool that converts Terraform plan JSON files into human-readable markdown reports. It is built using modern .NET 10 and C# 13 features, emphasizing clean architecture, testability, and maintainability.
+`tfplan2md` is a CLI tool that converts Terraform plan JSON files into human-readable markdown reports. It is built using **Go 1.22+**, emphasizing clean architecture, testability, and maintainability.
 
-The goal of this tool is to help DevOps and infrastructure teams easily review Terraform plans by generating concise markdown summaries of proposed changes. The summaries must be customizable via template files, and provide a default template out of the box.
+The goal of this tool is to help DevOps and infrastructure teams easily review Terraform plans by generating concise markdown summaries of proposed changes. The tool produces a static, cross-platform binary distributed via Docker, GitHub Releases, and Homebrew.
 
 ## Project Organization
-- Use namespaces to organize the code. The root namespace is `Oocx.TfPlan2Md`
-- Use a single project for the CLI tool; use separate projects for tests
-- Organize files by feature (e.g., `Parsing`, `MarkdownGeneration`, `CLI`), not by type (e.g., `Models`, `Services`)
+- Use Go packages to organize the code. The module path is `github.com/51nk0r5w1m/tfplan2md`
+- Go source lives under `src-go/` with standard layout: `cmd/tfplan2md/` (entry point), `internal/` (all implementation packages)
+- Organize packages by feature (e.g., `internal/parsing`, `internal/markdown`, `internal/cli`, `internal/providers`), not by type (e.g., `models`, `services`)
 - Place all documentation in the /docs folder, except for the README.md at the root
 - Key architecture decisions must be documented in separate files per decision. Place those files in /docs/adr-nnn-title.
 - Documentation subfolders under `/docs/features`, `/docs/issues`, and `/docs/workflow` use a global numeric prefix: `NNN-<topic-slug>`.
@@ -19,43 +19,36 @@ The goal of this tool is to help DevOps and infrastructure teams easily review T
 
 ## Coding Standards
 
-### Access Modifiers
+### Package Visibility
 
-**This is NOT a class library** - tfplan2md is a standalone CLI tool that is not referenced by other .NET projects. Therefore:
+**This is NOT a library** — `tfplan2md` is a standalone CLI tool. Use Go's package visibility conventions appropriately:
 
-- **Use the most restrictive access modifier that works**
-  - Prefer `private` for class members whenever possible
-  - Use `internal` for types and members that need cross-assembly visibility within the solution
-  - Avoid `public` unless there is a clear justification
-
-- **Valid reasons for `public` access:**
-  - Main entry points (e.g., `Program.cs` top-level statements or `Main` method)
-  - Types/members that must be visible to test projects
+- **Prefer unexported identifiers** (`camelCase`) for all implementation details within a package
+- **Export (`PascalCase`) only when** an identifier must be referenced from another package
+- All implementation code lives in `internal/` sub-packages, which Go enforces as non-importable by external modules
+- The `cmd/tfplan2md/main.go` entry point is the only exported surface
 
 - **Test Access Strategy:**
-  - Use `InternalsVisibleTo` attribute to expose `internal` members to test projects
-  - Do NOT make members `public` solely for testing purposes
-  - Add this to the main project's `.csproj` or `AssemblyInfo.cs`:
-    ```csharp
-    [assembly: InternalsVisibleTo("Oocx.TfPlan2Md.TUnit")]
-    ```
-  - **Note**: TUnit is the primary and only test framework used in this project
+  - Use `_test.go` files in the same package (white-box tests) to access unexported identifiers
+  - Use separate `_test` package suffix (e.g., `package parsing_test`) for black-box integration tests
+  - Do NOT export identifiers solely for testing — use same-package tests instead
 
 - **Why this matters:**
-  - Agents were considering backwards compatibility and breaking changes for `public` methods even though no external consumers exist
-  - Restrictive access modifiers clearly communicate that members are internal implementation details
+  - Keeping identifiers unexported makes clear they are implementation details
+  - `internal/` packages are enforced by the Go toolchain — no external consumers possible
   - This prevents false concerns about API stability and breaking changes
 
 ### Code Comments
 
-- **All class members must have XML documentation comments** (including private members)
+- **All exported identifiers must have Go doc comments** (e.g., `// TypeName does ...`)
+- **Unexported identifiers** should have comments when the purpose is not immediately obvious
 - Comments should explain "why" something was done, not just repeat what the code shows
 - Follow the comprehensive guidelines in [docs/commenting-guidelines.md](commenting-guidelines.md)
 - Key requirements:
-  - Use `<summary>`, `<param>`, `<returns>`, `<remarks>` tags appropriately
+  - Go doc comments are plain text starting with `// FunctionName ...` or `// PackageName ...`
+  - `// Deprecated:` prefix marks deprecated identifiers
   - Reference related features/specifications for traceability
   - Keep comments synchronized with code changes
-  - Provide examples for complex methods using `<example>` and `<code>` tags
 
 ## CI/CD and Versioning
 
@@ -75,27 +68,28 @@ The goal of this tool is to help DevOps and infrastructure teams easily review T
 
 | Workflow | File | Trigger | Purpose |
 |----------|------|---------|----------|
-| PR Validation | `pr-validation.yml` | Pull requests to `main` | Format check, build, test, markdown lint, vulnerability scan |
+| PR Validation | `pr-validation.yml` | Pull requests to `main` | Format check (`gofmt`), build (`go build`), test (`go test`), markdown lint, vulnerability scan (`govulncheck`) |
 | CI | `ci.yml` | Push to `main` | Run Versionize to bump version and create tag **only when Docker-relevant files changed** (tests run in PR Validation) |
-| Release | `release.yml` | Version tags (`v*`) | Create GitHub Release with cumulative changelog, build and push Docker image |
-| CodeQL | _(default setup)_ | Push/PR to `main`, weekly schedule | Static analysis security scanning (C# source code) — managed by GitHub's CodeQL default setup, not a custom workflow file |
+| Release | `release.yml` | Version tags (`v*`) | Create GitHub Release with cumulative changelog, cross-compile Go binaries, build and push Docker image |
+| CodeQL | _(default setup)_ | Push/PR to `main`, weekly schedule | Static analysis security scanning (Go source code) — managed by GitHub's CodeQL default setup |
 
 **Test Optimization:** Tests only run in PR Validation workflow to eliminate redundancy. CI workflow focuses solely on versioning after merge, significantly reducing CI time. All quality gates (format, build, test, lint, vulnerability scan) must pass in PR validation before merge.
 
-**Release Gating:** The CI workflow only creates a new version tag when the published Docker image would change. This includes changes to runtime code (`src/` excluding test directories), example files (`examples/`), and Docker build configuration. Test-only changes (under `src/tests/`, `src/tools/`, test results) and workflow/internal-tooling changes (`.github/`, `scripts/`, `docs/`, `website/`) intentionally do not trigger releases.
+**Release Gating:** The CI workflow only creates a new version tag when the published Docker image would change. This includes changes to runtime code (`src-go/` excluding test files), example files (`examples/`), and Docker build configuration. Test-only changes and workflow/internal-tooling changes (`.github/`, `scripts/`, `docs/`, `website/`) intentionally do not trigger releases.
 
 **Commit Guardrails:** Pull requests that only change workflow/internal tooling (e.g., `.github/`, `scripts/`, `docs/`, `website/`) must not use version-bumping Conventional Commit types such as `feat:` or `fix:`. Use `workflow:`, `docs:`, `chore:`, or `ci:` instead. **Why:** Versionize treats `feat:` as a minor bump and `fix:` as a patch bump. Incorrect commit types cause unintended version increments (e.g., a minor bump instead of a patch, or a release for changes that don't affect the published Docker image). The Release Manager agent must verify commit types before merging.
 
 **Release Notes:** The release workflow generates cumulative release notes that include all changes since the last GitHub release. This ensures Docker deployments contain complete change history even when intermediate versions are not released.
 
 ### Code Quality
-- **Analyzers**: Microsoft.CodeAnalysis.NetAnalyzers with `TreatWarningsAsErrors`
-- **Code Metrics**: Automated enforcement of cyclomatic complexity (≤15), maintainability index (≥20), line length (≤160), and file length (~300 lines)
-- **Code Style**: Enforced via `.editorconfig` and `dotnet format`
-- **Architecture Enforcement**: Automated architecture tests verify layer boundaries and dependency rules (see [docs/architecture-rules.md](architecture-rules.md))
-- **Pre-commit Hooks**: [Husky.Net](https://github.com/alirezanet/Husky.Net) runs format check and build before commit
-- **Dependency Updates**: Dependabot configured for NuGet, Docker, and GitHub Actions
-- **Suppression Policy**: Quality metric violations require explicit `SuppressMessage` attributes with justification and maintainer approval (see [docs/commenting-guidelines.md](commenting-guidelines.md))
+- **Linter**: `golangci-lint` with `staticcheck`, `errcheck`, `gosimple`, `govet`, `ineffassign`, `unused` enabled; treat all warnings as errors in CI
+- **Code Metrics**: `golangci-lint` enforces cyclomatic complexity (≤15 via `gocyclo`/`cyclop`), file length (~300 lines), and function length
+- **Code Style**: Enforced via `gofmt` and `goimports`; `.editorconfig` set for Go tab indentation
+- **Architecture Enforcement**: Package structure enforced via `go vet` and `golangci-lint` rules; `internal/` packages enforced by the Go toolchain
+- **Pre-commit Hooks**: Git hooks (via shell scripts in `.git/hooks/` or `pre-commit` framework) run `gofmt -l` and `go vet ./...` before commit
+- **Dependency Updates**: Dependabot configured for Go modules (`go.mod`/`go.sum`), Docker, and GitHub Actions
+- **Suppression Policy**: Linter suppressions (`//nolint:lintername`) require inline justification comment and maintainer approval (see [docs/commenting-guidelines.md](commenting-guidelines.md))
+- **Vulnerability Scanning**: `govulncheck ./...` runs in PR Validation to detect known Go module vulnerabilities
 
 ### Branch Strategy
 - `main` branch is always in a releasable state
