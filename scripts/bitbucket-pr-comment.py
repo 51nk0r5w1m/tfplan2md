@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import html
 import json
 import os
@@ -54,13 +53,6 @@ def parse_args() -> argparse.Namespace:
         default=int(os.getenv("BITBUCKET_API_TIMEOUT_SECONDS", str(DEFAULT_API_TIMEOUT_SECONDS))),
         help=f"Bitbucket API timeout in seconds (default: {DEFAULT_API_TIMEOUT_SECONDS}).",
     )
-    parser.add_argument("--username", default=os.getenv("BITBUCKET_USERNAME"), help=argparse.SUPPRESS)
-    parser.add_argument(
-        "--app-password",
-        default=os.getenv("BITBUCKET_APP_PASSWORD"),
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument("--token", default=os.getenv("BITBUCKET_TOKEN"), help=argparse.SUPPRESS)
     parser.add_argument("--dry-run", action="store_true", help="Print the comment body without calling the Bitbucket API.")
     parser.add_argument("--comment-file", help="Write the generated comment body to a file for diagnostics or artifacts.")
     return parser.parse_args()
@@ -91,14 +83,9 @@ def build_comment_body(report: str, title: str, marker: str, max_comment_chars: 
     )
 
 
-def get_auth_header(oidc_token: str | None, username: str | None, app_password: str | None, token: str | None) -> str:
+def get_auth_header(oidc_token: str | None) -> str:
     if oidc_token:
         return f"Bearer {oidc_token}"
-    if token:
-        return f"Bearer {token}"
-    if username and app_password:
-        credentials = base64.b64encode(f"{username}:{app_password}".encode("utf-8")).decode("ascii")
-        return f"Basic {credentials}"
     raise ValueError("Enable Bitbucket Pipelines OIDC and pass BITBUCKET_STEP_OIDC_TOKEN to post PR comments.")
 
 
@@ -192,7 +179,7 @@ def main() -> int:
 
     try:
         workspace, repo_slug, pull_request_id = validate_comment_target(args)
-        auth_header = get_auth_header(args.oidc_token, args.username, args.app_password, args.token)
+        auth_header = get_auth_header(args.oidc_token)
         upsert_comment(
             comments_url(args.api_base_url, workspace, repo_slug, pull_request_id),
             args.marker,

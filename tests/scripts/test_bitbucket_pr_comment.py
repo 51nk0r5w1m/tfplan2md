@@ -34,10 +34,10 @@ class BitbucketPrCommentTests(unittest.TestCase):
         self.assertIn("## Summary", comment)
         self.assertNotIn("<a href=", comment)
 
-    def test_oidc_token_is_preferred_for_auth_header(self):
+    def test_oidc_token_is_used_for_auth_header(self):
         module = load_script_module("bitbucket_pr_comment", "bitbucket-pr-comment.py")
 
-        auth_header = module.get_auth_header("oidc-token", "user", "password", "fallback-token")
+        auth_header = module.get_auth_header("oidc-token")
 
         self.assertEqual("Bearer oidc-token", auth_header)
 

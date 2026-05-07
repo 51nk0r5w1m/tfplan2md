@@ -53,29 +53,46 @@ def detect_has_changes(plan_json_path: str | None) -> bool:
     return False
 
 
-def build_context(args: argparse.Namespace) -> dict[str, Any]:
-    context = load_json(args.context) if args.context else {}
-    has_changes = detect_has_changes(args.plan_json)
-    if args.has_changes is not None:
-        has_changes = args.has_changes == "true"
+def resolve_actor(args: argparse.Namespace, context: dict[str, Any]) -> str | None:
+    """Resolve the change actor from explicit input, portable context, then Bitbucket environment values."""
+    return (
+        args.actor
+        or context.get("actor")
+        or os.getenv("TFPLAN2MD_ACTOR")
+        or os.getenv("BITBUCKET_STEP_TRIGGERER_UUID")
+        or os.getenv("BITBUCKET_COMMIT_AUTHOR")
+    )
 
-    actor = args.actor or context.get("actor") or os.getenv("TFPLAN2MD_ACTOR") or os.getenv("BITBUCKET_STEP_TRIGGERER_UUID") or os.getenv("BITBUCKET_COMMIT_AUTHOR")
-    target_branch = (
+
+def resolve_target_branch(args: argparse.Namespace, context: dict[str, Any]) -> str | None:
+    """Resolve the target branch from explicit input, portable context, then Bitbucket PR/default branch values."""
+    return (
         args.target_branch
         or context.get("targetBranch")
         or os.getenv("TFPLAN2MD_TARGET_BRANCH")
         or os.getenv("BITBUCKET_PR_DESTINATION_BRANCH")
         or os.getenv("BITBUCKET_BRANCH")
     )
-    source_branch = args.source_branch or context.get("sourceBranch") or os.getenv("TFPLAN2MD_SOURCE_BRANCH") or os.getenv("BITBUCKET_BRANCH")
+
+
+def resolve_source_branch(args: argparse.Namespace, context: dict[str, Any]) -> str | None:
+    """Resolve the source branch from explicit input, portable context, then the Bitbucket branch value."""
+    return args.source_branch or context.get("sourceBranch") or os.getenv("TFPLAN2MD_SOURCE_BRANCH") or os.getenv("BITBUCKET_BRANCH")
+
+
+def build_context(args: argparse.Namespace) -> dict[str, Any]:
+    context = load_json(args.context) if args.context else {}
+    has_changes = detect_has_changes(args.plan_json)
+    if args.has_changes is not None:
+        has_changes = args.has_changes == "true"
 
     context.update(
         {
-            "actor": actor,
+            "actor": resolve_actor(args, context),
             "actorUuid": context.get("actorUuid") or os.getenv("BITBUCKET_STEP_TRIGGERER_UUID"),
             "actorEmail": context.get("actorEmail") or os.getenv("BITBUCKET_COMMIT_AUTHOR"),
-            "targetBranch": target_branch,
-            "sourceBranch": source_branch,
+            "targetBranch": resolve_target_branch(args, context),
+            "sourceBranch": resolve_source_branch(args, context),
             "hasChanges": has_changes,
         }
     )
