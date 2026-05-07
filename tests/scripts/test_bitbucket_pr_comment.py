@@ -1,19 +1,10 @@
-import importlib.util
 import unittest
-from pathlib import Path
-
-
-def load_module():
-    module_path = Path(__file__).resolve().parents[2] / "scripts" / "bitbucket-pr-comment.py"
-    spec = importlib.util.spec_from_file_location("bitbucket_pr_comment", module_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from module_loader import load_script_module
 
 
 class BitbucketPrCommentTests(unittest.TestCase):
     def test_large_report_falls_back_to_html_artifact_link(self):
-        module = load_module()
+        module = load_script_module("bitbucket_pr_comment", "bitbucket-pr-comment.py")
 
         comment = module.build_comment_body(
             report="x" * 100,
@@ -30,7 +21,7 @@ class BitbucketPrCommentTests(unittest.TestCase):
         self.assertIn("Artifact URL: https://bitbucket.org/example/repo/pipelines/results/123?tab=artifacts&file=report.md", comment)
 
     def test_small_report_is_kept_inline(self):
-        module = load_module()
+        module = load_script_module("bitbucket_pr_comment", "bitbucket-pr-comment.py")
 
         comment = module.build_comment_body(
             report="## Summary\n\nNo changes",
@@ -44,7 +35,7 @@ class BitbucketPrCommentTests(unittest.TestCase):
         self.assertNotIn("<a href=", comment)
 
     def test_oidc_token_is_preferred_for_auth_header(self):
-        module = load_module()
+        module = load_script_module("bitbucket_pr_comment", "bitbucket-pr-comment.py")
 
         auth_header = module.get_auth_header("oidc-token", "user", "password", "fallback-token")
 

@@ -28,7 +28,8 @@ pipelines:
             - terraform init -input=false
             - terraform plan -input=false -out=plan.tfplan
             - terraform show -json plan.tfplan > plan.json
-            - docker run --rm -v "$PWD:/workspace" -w /workspace oocx/tfplan2md:1.0.0 plan.json --render-target bitbucket --details closed --output tfplan2md-report.md
+            - export TFPLAN2MD_VERSION=1.0.0 # Replace with the approved release version for your organization.
+            - docker run --rm -v "$PWD:/workspace" -w /workspace "oocx/tfplan2md:${TFPLAN2MD_VERSION}" plan.json --render-target bitbucket --details closed --output tfplan2md-report.md
             - scripts/bitbucket-pr-comment.py --report tfplan2md-report.md --artifact-url "https://bitbucket.org/${BITBUCKET_WORKSPACE}/${BITBUCKET_REPO_SLUG}/pipelines/results/${BITBUCKET_BUILD_NUMBER}"
           artifacts:
             - tfplan2md-report.md

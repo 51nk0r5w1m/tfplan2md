@@ -82,7 +82,7 @@ def build_context(args: argparse.Namespace) -> dict[str, Any]:
     return context
 
 
-def as_list(value: Any) -> list[Any]:
+def normalize_to_list(value: Any) -> list[Any]:
     if value is None:
         return []
     return value if isinstance(value, list) else [value]
@@ -117,11 +117,11 @@ def when_matches(conditions: dict[str, Any], context: dict[str, Any]) -> bool:
 
 def allow_matches(allow: dict[str, Any], context: dict[str, Any]) -> tuple[bool, list[str]]:
     failures = []
-    if not actor_matches(context, as_list(allow.get("actors"))):
+    if not actor_matches(context, normalize_to_list(allow.get("actors"))):
         failures.append(f"actor '{context.get('actor')}' is not allowed")
-    if not matches_any(context.get("targetBranch"), as_list(allow.get("targetBranches"))):
+    if not matches_any(context.get("targetBranch"), normalize_to_list(allow.get("targetBranches"))):
         failures.append(f"target branch '{context.get('targetBranch')}' is not allowed")
-    if not matches_any(context.get("sourceBranch"), as_list(allow.get("sourceBranches"))):
+    if not matches_any(context.get("sourceBranch"), normalize_to_list(allow.get("sourceBranches"))):
         failures.append(f"source branch '{context.get('sourceBranch')}' is not allowed")
     return not failures, failures
 

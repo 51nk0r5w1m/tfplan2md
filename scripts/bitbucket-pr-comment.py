@@ -17,6 +17,7 @@ from pathlib import Path
 
 DEFAULT_MARKER = "<!-- tfplan2md-bitbucket-report -->"
 DEFAULT_MAX_COMMENT_CHARS = 60000
+DEFAULT_API_TIMEOUT_SECONDS = 30
 BITBUCKET_API_ROOT = "https://api.bitbucket.org/2.0"
 
 
@@ -46,6 +47,12 @@ def parse_args() -> argparse.Namespace:
         "--api-base-url",
         default=os.getenv("BITBUCKET_API_BASE_URL", BITBUCKET_API_ROOT),
         help="Bitbucket-compatible API root. Enterprise OIDC gateways can override this URL.",
+    )
+    parser.add_argument(
+        "--api-timeout-seconds",
+        type=int,
+        default=int(os.getenv("BITBUCKET_API_TIMEOUT_SECONDS", str(DEFAULT_API_TIMEOUT_SECONDS))),
+        help=f"Bitbucket API timeout in seconds (default: {DEFAULT_API_TIMEOUT_SECONDS}).",
     )
     parser.add_argument("--username", default=os.getenv("BITBUCKET_USERNAME"), help=argparse.SUPPRESS)
     parser.add_argument(
@@ -95,7 +102,7 @@ def get_auth_header(oidc_token: str | None, username: str | None, app_password: 
     raise ValueError("Enable Bitbucket Pipelines OIDC and pass BITBUCKET_STEP_OIDC_TOKEN to post PR comments.")
 
 
-def api_request(url: str, method: str, auth_header: str, payload: dict | None = None) -> dict:
+def api_request(url: str, method: str, auth_header: str, timeout_seconds: int, payload: dict | None = None) -> dict:
     data = None
     headers = {
         "Authorization": auth_header,
@@ -108,7 +115,7 @@ def api_request(url: str, method: str, auth_header: str, payload: dict | None = 
 
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             response_body = response.read().decode("utf-8")
             return json.loads(response_body) if response_body else {}
     except urllib.error.HTTPError as error:
@@ -123,10 +130,10 @@ def comments_url(api_base_url: str, workspace: str, repo_slug: str, pull_request
     return f"{api_base_url.rstrip('/')}/repositories/{encoded_workspace}/{encoded_repo_slug}/pullrequests/{encoded_pr_id}/comments"
 
 
-def find_existing_comment(url: str, marker: str, auth_header: str) -> int | None:
+def find_existing_comment(url: str, marker: str, auth_header: str, timeout_seconds: int) -> int | None:
     next_url = f"{url}?pagelen=100"
     while next_url:
-        response = api_request(next_url, "GET", auth_header)
+        response = api_request(next_url, "GET", auth_header, timeout_seconds)
         for comment in response.get("values", []):
             raw = comment.get("content", {}).get("raw", "")
             if marker in raw:
@@ -135,15 +142,15 @@ def find_existing_comment(url: str, marker: str, auth_header: str) -> int | None
     return None
 
 
-def upsert_comment(url: str, marker: str, comment_body: str, auth_header: str) -> None:
+def upsert_comment(url: str, marker: str, comment_body: str, auth_header: str, timeout_seconds: int) -> None:
     payload = {"content": {"raw": comment_body}}
-    existing_comment_id = find_existing_comment(url, marker, auth_header)
+    existing_comment_id = find_existing_comment(url, marker, auth_header, timeout_seconds)
     if existing_comment_id is None:
-        api_request(url, "POST", auth_header, payload)
+        api_request(url, "POST", auth_header, timeout_seconds, payload)
         print("Created Bitbucket PR comment.")
         return
 
-    api_request(f"{url}/{existing_comment_id}", "PUT", auth_header, payload)
+    api_request(f"{url}/{existing_comment_id}", "PUT", auth_header, timeout_seconds, payload)
     print(f"Updated Bitbucket PR comment {existing_comment_id}.")
 
 
@@ -186,7 +193,13 @@ def main() -> int:
     try:
         workspace, repo_slug, pull_request_id = validate_comment_target(args)
         auth_header = get_auth_header(args.oidc_token, args.username, args.app_password, args.token)
-        upsert_comment(comments_url(args.api_base_url, workspace, repo_slug, pull_request_id), args.marker, comment_body, auth_header)
+        upsert_comment(
+            comments_url(args.api_base_url, workspace, repo_slug, pull_request_id),
+            args.marker,
+            comment_body,
+            auth_header,
+            args.api_timeout_seconds,
+        )
     except (RuntimeError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 2

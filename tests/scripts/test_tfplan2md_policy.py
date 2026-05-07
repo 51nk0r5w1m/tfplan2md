@@ -1,21 +1,13 @@
-import importlib.util
 import json
 import tempfile
 import unittest
 from pathlib import Path
-
-
-def load_module():
-    module_path = Path(__file__).resolve().parents[2] / "scripts" / "tfplan2md-policy.py"
-    spec = importlib.util.spec_from_file_location("tfplan2md_policy", module_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from module_loader import load_script_module
 
 
 class Tfplan2MdPolicyTests(unittest.TestCase):
     def test_policy_allows_named_actor_on_develop(self):
-        module = load_module()
+        module = load_script_module("tfplan2md_policy", "tfplan2md-policy.py")
         policy = {
             "rules": [
                 {
@@ -33,7 +25,7 @@ class Tfplan2MdPolicyTests(unittest.TestCase):
         self.assertEqual(["terraform changes only by release owner on develop"], result["matchedRules"])
 
     def test_policy_denies_named_actor_on_wrong_branch(self):
-        module = load_module()
+        module = load_script_module("tfplan2md_policy", "tfplan2md-policy.py")
         policy = {
             "rules": [
                 {
@@ -53,7 +45,7 @@ class Tfplan2MdPolicyTests(unittest.TestCase):
         self.assertIn("target branch 'main' is not allowed", result["failures"][0]["reasons"])
 
     def test_detect_has_changes_from_plan_json(self):
-        module = load_module()
+        module = load_script_module("tfplan2md_policy", "tfplan2md-policy.py")
         with tempfile.TemporaryDirectory() as temp_dir:
             plan_path = Path(temp_dir) / "plan.json"
             plan_path.write_text(
