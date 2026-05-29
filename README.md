@@ -38,6 +38,7 @@ Terraform plans are notoriously difficult to review in pull requests:
 - **Compliance audits** - Generate human-readable change documentation for compliance reviews
 - **Team communication** - Share infrastructure changes with stakeholders who don't read Terraform code
 - **CI/CD integration** - Automatically post plan summaries to PRs, Slack, or Teams
+- **Enterprise Bitbucket Pipelines** - Generate Bitbucket-safe PR comments with artifact fallback links for large reports
 
 ## Features
 
@@ -56,6 +57,7 @@ Terraform plans are notoriously difficult to review in pull requests:
 - 📚 **Azure API documentation links** - Reliable links to Microsoft Learn REST API documentation for 92 Azure resource types (AzAPI provider)
 - 🔇 **Case-insensitive Azure ID filter** - Azure resource ID attribute changes that differ only in casing (ARM API quirk) are suppressed by default (`--ignore-azure-id-case-changes`), reducing noise in reports
 - 🎬 **Terraform 1.14/1.15 plan-JSON support** - Action invocations (`action_invocations[]`, `deferred_action_invocations[]`) rendered inline under their triggering resource; plan-context sections for drift detection (`🌀 Drift Detected`), relevant attributes, and plan-status banners (errored / not applyable / incomplete); deprecation warnings for variables and outputs flagged `deprecated` in Terraform 1.15 plans
+- 🏢 **Enterprise CI/CD guidance** - Production patterns for Bitbucket Pipelines, pinned artifacts, checksum verification, SARIF gates, and audit-friendly report retention
 
 ## Installation
 
@@ -257,6 +259,8 @@ terraform show -json plan.tfplan | tfplan2md --render-target bitbucket
 ```
 
 **Migration note:** The `--large-value-format` flag has been deprecated and replaced by `--render-target`. Use `--render-target azuredevops` for `inline-diff` behavior, or `--render-target github` / `--render-target bitbucket` for `simple-diff` behavior.
+
+For enterprise Bitbucket Pipelines examples, including oversized-comment fallback with an HTML artifact link, see [docs/enterprise-bitbucket-pipelines.md](docs/enterprise-bitbucket-pipelines.md).
 
 #### Debug Output
 

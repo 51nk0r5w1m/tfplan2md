@@ -94,7 +94,7 @@ See [docs/architecture-rules.md](docs/architecture-rules.md) for complete layer 
 
 All generated markdown must:
 - Pass markdownlint validation (MD012 and other rules)
-- Render correctly on GitHub and Azure DevOps
+- Render correctly on GitHub, Azure DevOps, and Bitbucket
 - Have proper table structure (no blank lines between rows)
 - Have proper heading spacing (blank lines before/after)
 - Have balanced HTML tags (`<details>`, `<summary>`)
@@ -330,7 +330,7 @@ Each provider implements the `Provider` interface:
 | **Parsing** | `internal/parsing/` | Terraform plan JSON deserialization |
 | **Markdown** | `internal/markdown/` | Core report building and rendering |
 | **Providers** | `internal/providers/{name}/` | Provider-specific logic (azurerm, azapi, azuredevops) |
-| **RenderTargets** | `internal/rendertargets/` | Platform-specific diff formatting (GitHub, Azure DevOps) |
+| **RenderTargets** | `internal/rendertargets/` | Platform-specific diff formatting (GitHub, Azure DevOps, Bitbucket) |
 | **Platforms** | `internal/platforms/azure/` | Azure-specific utilities (principal mapping, role names) |
 
 ### Architecture Documentation
