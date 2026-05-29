@@ -1,6 +1,6 @@
 ---
 name: website-visual-assets
-description: Generate website HTML exports and screenshots using the repo's HtmlRenderer and ScreenshotGenerator tools.
+description: Generate website HTML exports and screenshots using the repo's htmlrenderer and screenshotgenerator Go tools.
 ---
 
 # Skill Instructions
@@ -10,13 +10,13 @@ Provide a repeatable workflow to generate HTML exports and screenshots for the w
 
 ## Hard Rules
 ### Must
-- [ ] Use `src/tools/Oocx.TfPlan2Md.HtmlRenderer` to generate HTML from markdown reports.
-- [ ] Use `src/tools/Oocx.TfPlan2Md.ScreenshotGenerator` (Playwright) to generate screenshots from those HTML exports.
+- [ ] Use `src-go/tools/htmlrenderer` to generate HTML from markdown reports.
+- [ ] Use `src-go/tools/screenshotgenerator` (Playwright via go-playwright) to generate screenshots from those HTML exports.
 - [ ] Store website screenshots under `website/src/assets/screenshots/`.
 - [ ] Update the consuming website source when screenshot assets change (for example the relevant page in `website/src/pages/` or shared content data in `website/src/_data/`).
 
 ### Must Not
-- [ ] Do not hand-edit screenshots or create “mock” screenshots that aren’t generated from real HTML exports.
+- [ ] Do not hand-edit screenshots or create "mock" screenshots that aren't generated from real HTML exports.
 
 ## Golden Example
 
@@ -38,15 +38,20 @@ scripts/generate-screenshot.sh \
 # - Azure DevOps rendering style
 
 # Manual Method (for advanced use cases):
+# Build the tools first
+cd src-go
+go build -o htmlrenderer ./tools/htmlrenderer
+go build -o screenshotgenerator ./tools/screenshotgenerator
+cd ..
+
 # 1) Generate HTML (Azure DevOps flavor, wrapped)
-dotnet run --project src/tools/Oocx.TfPlan2Md.HtmlRenderer -- \
+./src-go/htmlrenderer \
   --input artifacts/comprehensive-demo.md \
   --flavor azdo \
-  --template src/tools/Oocx.TfPlan2Md.HtmlRenderer/templates/azdo-wrapper.html \
   --output artifacts/comprehensive-demo.azdo.html
 
 # 2) Capture a screenshot with details expanded
-DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet run --project src/tools/Oocx.TfPlan2Md.ScreenshotGenerator -- \
+./src-go/screenshotgenerator \
   --input artifacts/comprehensive-demo.azdo.html \
   --output website/src/assets/screenshots/full-report-azdo.png \
   --open-details "details" \
@@ -55,8 +60,8 @@ DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet run --project src/tools/Oocx.TfPl
 
 ## Actions
 1. Pick the markdown report under `artifacts/` to use as the source.
-2. Generate the required HTML exports with `src/tools/Oocx.TfPlan2Md.HtmlRenderer`.
-3. Generate screenshots from the exported HTML with `src/tools/Oocx.TfPlan2Md.ScreenshotGenerator`.
+2. Generate the required HTML exports with `src-go/tools/htmlrenderer`.
+3. Generate screenshots from the exported HTML with `src-go/tools/screenshotgenerator`.
 4. Place the generated screenshots in `website/src/assets/screenshots/`.
 5. Update the consuming page or content source so it references the new screenshot asset.
 6. Verify the relevant page in `website/dist/` uses the correct light or dark asset variants and that any lightbox or screenshot wrapper still works.

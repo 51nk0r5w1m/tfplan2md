@@ -11,7 +11,7 @@ This example demonstrates how firewall rule changes appear with static analysis 
 ## Generate Report
 
 ```bash
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
+./tfplan2md \
   --code-analysis-results examples/firewall-with-static-analysis/analysis.sarif \
   --output examples/firewall-with-static-analysis/report.md \
   examples/firewall-with-static-analysis/plan.json

@@ -9,9 +9,10 @@ This document defines the standards for code comments in the tfplan2md project. 
    - Comments should explain *why* a particular approach was chosen
    - Provide context that cannot be inferred from reading the code alone
 
-2. **All class members must be documented**
-   - Public, internal, and private members all require comments
-   - Even if access is restricted, comments help maintainers understand design decisions
+2. **All exported identifiers must be documented**
+   - All exported types, functions, methods, constants, and variables require Go doc comments
+   - Unexported identifiers should have comments when the purpose is not immediately obvious
+   - Even unexported implementation details benefit from "why" comments
 
 3. **Comments must add value**
    - Don't repeat what's already obvious from the code
@@ -22,238 +23,179 @@ This document defines the standards for code comments in the tfplan2md project. 
    - Update comments whenever code changes
    - Outdated comments are worse than no comments
 
-## XML Documentation Comments
+## Go Doc Comments
 
-### Required Elements
+### Format Requirements
 
-All XML documentation comments must use C# triple-slash (`///`) syntax and include appropriate XML tags.
+Go doc comments are plain text comments that immediately precede the documented declaration with no blank line. They always begin with `//` for single declarations. The first sentence should start with the name of the declared identifier.
 
-#### Classes and Types
+See [Go doc comment specification](https://go.dev/doc/comment) for the full reference.
 
-```csharp
-/// <summary>
-/// Parses Terraform plan JSON files and extracts resource changes.
-/// </summary>
-/// <remarks>
-/// This parser follows the Terraform JSON plan format specification v1.2.
-/// It uses System.Text.Json for parsing due to better performance on large files
-/// compared to Newtonsoft.Json (benchmark: see ADR-003).
-/// </remarks>
-/// <seealso cref="ResourceChange"/>
-internal sealed class TerraformPlanParser
-{
-    // Implementation
+#### Packages
+
+```go
+// Package parsing implements parsing of Terraform plan JSON files.
+//
+// It converts the JSON output of `terraform show -json` into strongly-typed
+// Go structs. This package follows the Terraform JSON plan format specification
+// v1.x and handles format versions 1.0 through 1.15+.
+//
+// The primary entry point is ParsePlan, which accepts a file path and returns
+// a *Plan containing all resource changes, outputs, and deprecation warnings.
+package parsing
+```
+
+#### Types
+
+```go
+// Plan represents a parsed Terraform plan JSON file.
+//
+// It is the root type returned by ParsePlan and contains all resource changes,
+// output changes, and deprecation warnings found in the plan.
+// Sensitive values are identified but not automatically redacted at this layer;
+// redaction is handled by the markdown rendering layer based on the --show-sensitive flag.
+type Plan struct {
+    // FormatVersion is the Terraform plan format version (e.g., "1.2").
+    FormatVersion string
+    // ResourceChanges contains all resource changes in the plan.
+    ResourceChanges []ResourceChange
 }
 ```
 
-**Required tags:**
-- `<summary>` - Brief description of the type's purpose (one sentence preferred)
-- `<remarks>` (optional but recommended) - Additional context, design decisions, or usage notes
+**Required for all exported types:**
+- First sentence: brief description starting with the type name
+- Additional paragraph (optional): design decisions, usage notes, constraints
 
-**Optional tags:**
-- `<seealso>` - References to related types
-- `<example>` - Usage examples for complex types
+**Optional:**
+- `// Deprecated: Use NewType instead.` prefix for deprecated types
 
-#### Methods
+#### Functions and Methods
 
-```csharp
-/// <summary>
-/// Parses a Terraform plan JSON file and returns the resource changes.
-/// </summary>
-/// <param name="planFilePath">Absolute path to the Terraform plan JSON file.</param>
-/// <param name="cancellationToken">Token to cancel the asynchronous operation.</param>
-/// <returns>A collection of resource changes found in the plan.</returns>
-/// <exception cref="FileNotFoundException">Thrown when the plan file does not exist.</exception>
-/// <exception cref="JsonException">Thrown when the JSON format is invalid.</exception>
-/// <remarks>
-/// This method uses streaming deserialization to handle large plan files efficiently.
-/// Memory usage remains constant regardless of file size.
-/// Related feature: Comprehensive Demo (docs/features/008-comprehensive-demo/)
-/// </remarks>
-internal async Task<IReadOnlyList<ResourceChange>> ParseAsync(
-    string planFilePath,
-    CancellationToken cancellationToken = default)
-{
-    // Implementation
+```go
+// ParsePlan reads the Terraform plan JSON file at path and returns the parsed plan.
+//
+// It uses streaming JSON decoding to handle large plan files efficiently;
+// memory usage stays constant regardless of file size.
+//
+// ParsePlan returns an error if the file cannot be read, if the JSON is malformed,
+// or if the format version is not supported.
+//
+// Related feature: docs/features/008-comprehensive-demo/
+func ParsePlan(path string) (*Plan, error) {
+    // implementation
 }
 ```
 
-**Required tags:**
-- `<summary>` - Clear description of what the method does
-- `<param>` - Document each parameter (what it represents, constraints, valid values)
-- `<returns>` - Describe the return value (what it contains, when it's empty, etc.)
+**Required for all exported functions:**
+- First sentence starting with the function name
+- Error conditions documented in the comment body
 
-**Conditional tags:**
-- `<exception>` - Document all exceptions that can be thrown (use when method can throw)
-- `<remarks>` - Additional context (use when there are important design decisions or references)
-- `<example>` - Usage examples (use for complex methods or public APIs)
+**Optional:**
+- Usage example via a separate `Example*` function in `_test.go`
+- Links to related features or specs
 
-#### Properties
+#### Methods on Types
 
-```csharp
-/// <summary>
-/// Gets the type of resource change (create, update, delete, no-op).
-/// </summary>
-/// <value>
-/// A string representing the change action as defined in the Terraform plan.
-/// </value>
-internal string Action { get; init; }
-
-/// <summary>
-/// Gets whether sensitive values should be displayed in the output.
-/// </summary>
-/// <value>
-/// <c>true</c> to show sensitive values; <c>false</c> to mask them.
-/// Default is <c>false</c> for security.
-/// </value>
-/// <remarks>
-/// This flag affects how the Scriban templates render resource attributes.
-/// When false, values marked as sensitive in the plan are replaced with "[REDACTED]".
-/// </remarks>
-internal bool ShowSensitive { get; init; }
+```go
+// String returns the action as a human-readable string (e.g., "create", "update", "delete").
+func (a Action) String() string {
+    // implementation
+}
 ```
 
-**Required tags:**
-- `<summary>` - What the property represents
-- `<value>` - Description of the property value, valid range, default value if applicable
+#### Constants and Variables
 
-**Optional tags:**
-- `<remarks>` - Additional context about when/why to use this property
+```go
+// DefaultTitle is the report title used when no --title flag is provided.
+const DefaultTitle = "Terraform Plan"
 
-#### Fields
-
-```csharp
-/// <summary>
-/// Default template name used when no custom template is specified.
-/// </summary>
-private const string DefaultTemplateName = "default.scriban";
-
-/// <summary>
-/// Cache of compiled Scriban templates to avoid recompilation.
-/// </summary>
-/// <remarks>
-/// Templates are cached by their file path. Cache is thread-safe and uses
-/// ConcurrentDictionary for lock-free reads.
-/// </remarks>
-private readonly ConcurrentDictionary<string, Template> _templateCache;
+// ErrUnsupportedFormatVersion is returned when the plan JSON uses a format
+// version not supported by this version of tfplan2md.
+var ErrUnsupportedFormatVersion = errors.New("unsupported plan format version")
 ```
 
-**Required tags:**
-- `<summary>` - Purpose of the field
+### Advanced Comment Patterns
 
-**Optional tags:**
-- `<remarks>` - Important implementation details (threading, caching strategy, etc.)
+#### Deprecated Identifiers
 
-### Advanced XML Tags
+Use `// Deprecated:` as the first line of the doc comment:
+
+```go
+// Deprecated: Use ParsePlan instead. ParsePlanLegacy will be removed in v2.0.
+func ParsePlanLegacy(path string) (*Plan, error) {
+    return ParsePlan(path)
+}
+```
 
 #### Cross-References
 
-Use `<see>` for inline references and `<seealso>` for related items:
+Use `[TypeName]` or `[pkg.TypeName]` syntax for cross-references (Go 1.19+):
 
-```csharp
-/// <summary>
-/// Maps Azure role definition IDs to human-readable names.
-/// See <see cref="AzureScopeParser"/> for scope parsing logic.
-/// </summary>
-/// <seealso cref="IAzureRoleMapper"/>
-/// <seealso cref="NullPrincipalMapper"/>
-internal sealed class AzureRoleDefinitionMapper
-{
-    // Implementation
+```go
+// ResourceChange describes a single resource change in a Terraform plan.
+//
+// See [Plan] for the root type that contains a slice of ResourceChange.
+// See [Action] for the set of valid change actions.
+type ResourceChange struct {
+    // ...
 }
 ```
 
-#### Code Examples
+#### Examples in Doc Comments
 
-Use `<example>` with `<code>` tags for usage demonstrations:
+For complex types, use a separate `Example*` function in `_test.go`:
 
-```csharp
-/// <summary>
-/// Formats firewall rules in a before/after comparison format.
-/// </summary>
-/// <example>
-/// <code>
-/// var formatter = new FirewallRuleFormatter();
-/// var result = formatter.Format(beforeRules, afterRules);
-/// Console.WriteLine(result);
-/// // Output:
-/// // Before: Allow 80, 443
-/// // After:  Allow 80, 443, 8080
-/// </code>
-/// </example>
-internal string Format(IReadOnlyList<string> beforeRules, IReadOnlyList<string> afterRules)
-{
-    // Implementation
+```go
+// In parsing_test.go:
+func ExampleParsePlan() {
+    plan, err := parsing.ParsePlan("testdata/create-only-plan.json")
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(len(plan.ResourceChanges))
+    // Output: 3
 }
 ```
 
-#### Inline Code References
+## Implementation Comments (Non-Doc)
 
-Use `<c>` for inline code terms:
-
-```csharp
-/// <summary>
-/// Sets the output format to either <c>markdown</c> or <c>json</c>.
-/// </summary>
-internal string OutputFormat { get; set; }
-```
-
-#### Lists and Tables
-
-Use `<list>` for structured information:
-
-```csharp
-/// <summary>
-/// Validates the Terraform plan format version.
-/// </summary>
-/// <remarks>
-/// Supported versions:
-/// <list type="bullet">
-/// <item><description>1.0 - Initial plan format</description></item>
-/// <item><description>1.1 - Added provider metadata</description></item>
-/// <item><description>1.2 - Added sensitive value markers (current)</description></item>
-/// </list>
-/// </remarks>
-internal void ValidateVersion(string version)
-{
-    // Implementation
-}
-```
-
-## Implementation Comments (Non-XML)
-
-For inline comments within method bodies, use `//` single-line comments:
+For inline comments within function bodies, use `//` single-line comments:
 
 ### When to Use Implementation Comments
 
 1. **Explaining non-obvious algorithms**
-   ```csharp
-   // Use binary search since role definitions are sorted by ID (O(log n))
-   var index = Array.BinarySearch(roleDefinitions, targetId);
+   ```go
+   // Use binary search since roleDefinitions is sorted by ID (O(log n)).
+   idx := sort.Search(len(roleDefinitions), func(i int) bool {
+       return roleDefinitions[i].ID >= targetID
+   })
    ```
 
 2. **Documenting workarounds or constraints**
-   ```csharp
-   // WORKAROUND: System.Text.Json doesn't support custom converters on nested properties
-   // See: https://github.com/dotnet/runtime/issues/63791
-   var json = JsonSerializer.Serialize(data, _manualOptions);
+   ```go
+   // WORKAROUND: encoding/json does not support custom unmarshalers on
+   // embedded struct fields. Unmarshal manually and assign.
+   // See: https://github.com/golang/go/issues/6213
+   var raw rawPlan
+   if err := json.Unmarshal(data, &raw); err != nil {
+       return err
+   }
    ```
 
 3. **Explaining business logic or domain rules**
-   ```csharp
-   // Azure RBAC requires assignments at subscription scope or lower
-   // Management group assignments are handled separately
-   if (scope.StartsWith("/subscriptions/"))
-   {
-       // Process subscription-scoped assignment
+   ```go
+   // Azure RBAC assignments at management group scope use a different
+   // ID format ("/providers/Microsoft.Management/...") and are handled separately.
+   if strings.HasPrefix(scope, "/subscriptions/") {
+       // process subscription-scoped assignment
    }
    ```
 
 4. **Marking future improvements**
-   ```csharp
-   // TODO: Consider caching role definitions to reduce API calls
+   ```go
+   // TODO: Cache role definitions to reduce repeated lookups.
    // Related to feature: role-assignment-readable-display
-   var role = await FetchRoleDefinitionAsync(roleId);
+   role, err := fetchRoleDefinition(ctx, roleID)
    ```
 
 ### When NOT to Use Implementation Comments
@@ -261,82 +203,77 @@ For inline comments within method bodies, use `//` single-line comments:
 Avoid comments that simply restate the code:
 
 ❌ **Bad:**
-```csharp
-// Increment counter by 1
-counter++;
+```go
+// increment counter by 1
+counter++
 
-// Check if user is admin
-if (user.Role == "Admin")
-{
-    // Do nothing
+// check if user is admin
+if user.Role == "admin" {
+    // do nothing
 }
 ```
 
 ✅ **Good** (only comment if there's a reason):
-```csharp
-counter++;
+```go
+counter++
 
-// Skip admin users - they have global permissions by default
-if (user.Role != "Admin")
-{
-    ApplyRolePermissions(user);
+// Skip admin users — they have global permissions and ignore role-based filters.
+if user.Role != "admin" {
+    applyRolePermissions(user)
 }
 ```
 
 ## Traceability to Features
 
-When a class or method implements a specific feature, reference it in comments:
+When a type or function implements a specific feature, reference it in comments:
 
-```csharp
-/// <summary>
-/// Generates a summary table showing resource counts by type.
-/// </summary>
-/// <remarks>
-/// Implements feature: Summary Resource Type Breakdown
-/// Specification: docs/features/005-summary-resource-type-breakdown/specification.md
-/// </remarks>
-internal sealed class ResourceTypeSummaryGenerator
-{
-    // Implementation
+```go
+// ResourceTypeSummaryGenerator generates a summary table showing resource counts by type.
+//
+// Implements feature: Summary Resource Type Breakdown
+// Specification: docs/features/005-summary-resource-type-breakdown/specification.md
+type ResourceTypeSummaryGenerator struct {
+    // implementation
 }
 ```
 
 This helps trace code back to requirements and makes impact analysis easier during changes.
 
-## Comment Maintenance
+## Linter Suppressions
 
-## Quality Metric Suppressions
-
-Use suppressions sparingly to keep the codebase maintainable. Prefer refactoring over suppressing.
+Use `//nolint` sparingly to suppress false-positive linter warnings. Always include a justification.
 
 ### Required Suppression Practices
 
-1. **Use `SuppressMessage`** for most cases.
-    - Place the attribute on the narrowest possible scope (method, property, or type).
-    - Include a clear justification in the `Justification` named argument.
-    - Reference the related feature or task in the justification when applicable.
+1. **Use `//nolint:lintername`** on the narrowest possible scope (line or function).
+2. **Include a justification** immediately after the directive.
+3. **Document the why** with a comment above the suppressed code.
+4. **Maintainer approval is required** for new suppressions.
 
-2. **Document the why** directly above the suppressed member.
-    - Add a short comment explaining the rationale and trade-offs.
-    - Note any follow-up work if the suppression is temporary.
-
-3. **Maintainer approval is required** for new suppressions.
-    - Call out suppressions explicitly in the PR description or review summary.
+Example:
+```go
+// Complex state machine for RFC 9110 HTTP semantics requires > 15 branches.
+// Approved by maintainer in PR #346.
+//nolint:cyclop // RFC 9110 requires explicit handling of each status class
+func processRequest(req *http.Request) httpStatus {
+    // implementation
+}
+```
 
 ### Line Length Exceptions
 
 Line length suppressions are acceptable only for content that cannot be reasonably wrapped:
 
-- Long URLs that must remain intact.
-- Error messages or user-facing text where wrapping changes meaning.
-- Serialized JSON or embedded data where formatting is required by the consumer.
+- Long URLs that must remain intact
+- Error messages or user-facing text where wrapping changes meaning
+- Embedded JSON/YAML strings where formatting is required by the consumer
 
-If you must exceed the line length limit, add a brief comment explaining why the line cannot be split.
+## Comment Maintenance
 
 ### During Code Reviews
 
 Code reviewers must verify:
-- All public/internal/private members have XML doc comments
+- All exported identifiers have Go doc comments starting with the identifier name
 - Comments explain "why" not just "what"
 - Feature references are included where applicable
 - No outdated comments remain
@@ -344,43 +281,46 @@ Code reviewers must verify:
 ### During Refactoring
 
 When modifying code:
-1. Update all affected XML doc comments
+1. Update all affected doc comments
 2. Review inline comments for accuracy
 3. Add new comments for new logic
 4. Remove comments that no longer apply
 
 ## Tools and Validation
 
-### Enabling XML Documentation File Generation
+### Enabling Doc Comment Linting
 
-Ensure `.csproj` has XML documentation enabled:
+`golangci-lint` with the `revive` and `godot` linters enforces comment formatting:
 
-```xml
-<PropertyGroup>
-  <GenerateDocumentationFile>true</GenerateDocumentationFile>
-  <NoWarn>$(NoWarn);CS1591</NoWarn> <!-- Remove after all comments added -->
-</PropertyGroup>
+```yaml
+# .golangci.yml
+linters:
+  enable:
+    - godot    # checks that doc comments end with a period
+    - godox    # checks for TODO/FIXME/HACK comments
+    - revive   # reports missing doc comments on exported identifiers
 ```
 
 ### IDE Support
 
-Visual Studio and VS Code provide:
-- IntelliSense showing XML doc comments
-- Quick Info tooltips on hover
-- Auto-generation of comment stubs (`///` above member)
+VS Code with the Go extension (gopls) provides:
+- IntelliSense showing Go doc comments on hover
+- Quick Info tooltips
+- Automatic doc comment stub generation when typing `//` above a declaration
 
 ## References
 
-- [Microsoft C# XML Documentation Comments](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/language-specification/documentation-comments)
-- [C# Coding Conventions](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions)
-- [Recommended XML Tags for C# Documentation](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/xmldoc/)
+- [Go Doc Comments](https://go.dev/doc/comment)
+- [Effective Go — Commentary](https://go.dev/doc/effective_go#commentary)
+- [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
+- [golangci-lint](https://golangci-lint.run/)
 
 ## Summary
 
 Good comments serve as documentation for both current and future maintainers (human and AI). They should:
 
 - ✅ Explain *why* decisions were made
-- ✅ Document all members (public, internal, private)
+- ✅ Document all exported identifiers (starting with the identifier name)
 - ✅ Provide context not visible in the code
 - ✅ Reference specifications and features for traceability
 - ✅ Stay synchronized with code changes

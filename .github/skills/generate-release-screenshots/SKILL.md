@@ -1,6 +1,6 @@
 ---
 name: generate-release-screenshots
-description: Generate PNG screenshots for release notes using the repository's HtmlRenderer and ScreenshotGenerator tools. Use when asked to add screenshots to release notes or documentation.
+description: Generate PNG screenshots for release notes using the repository's htmlrenderer and screenshotgenerator Go tools. Use when asked to add screenshots to release notes or documentation.
 ---
 
 # Skill Instructions
@@ -10,7 +10,7 @@ Provide clear, actionable guidance for generating actual PNG screenshot files fo
 
 ## Hard Rules
 ### Must
-- [ ] **Install Playwright before generating screenshots**: Build the ScreenshotGenerator project (`dotnet build src/tools/Oocx.TfPlan2Md.ScreenshotGenerator/`), then install the browser via `pwsh src/tools/Oocx.TfPlan2Md.ScreenshotGenerator/bin/Debug/net10.0/playwright.ps1 install chromium --with-deps`. Do NOT use `npx playwright install` — the npm version differs from the .NET package version.
+- [ ] **Install Playwright before generating screenshots**: Build the screenshotgenerator tool (`go build -o screenshotgenerator ./tools/screenshotgenerator` from `src-go/`), then install the browser via `npx playwright install chromium --with-deps`.
 - [ ] Generate actual PNG files, NOT markdown links to source files or empty image references.
 - [ ] Use `scripts/generate-release-screenshots.sh` for release note screenshots (includes retry logic and error reporting).
 - [ ] Use `scripts/generate-screenshot.sh` for individual screenshots with full control (light/dark themes, DPI, crops).
@@ -18,7 +18,7 @@ Provide clear, actionable guidance for generating actual PNG screenshot files fo
 - [ ] Verify screenshots show the intended content (not blank pages or errors) — visually inspect each screenshot.
 - [ ] Use focused, small screenshots for release notes: **max 580×400 pixels**.
 - [ ] Use only `*-crop*.png` files in release notes, or generate single screenshots using the release wrapper.
-- [ ] **Use absolute `raw.githubusercontent.com` URLs in release notes** — relative paths like `./image.png` do NOT work in GitHub Release pages. Use format: `https://raw.githubusercontent.com/oocx/tfplan2md/v{VERSION}/docs/{path}/image.png` where `{VERSION}` is the release tag.
+- [ ] **Use absolute `raw.githubusercontent.com` URLs in release notes** — relative paths like `./image.png` do NOT work in GitHub Release pages. Use format: `https://raw.githubusercontent.com/51nk0r5w1m/tfplan2md/v{VERSION}/docs/{path}/image.png` where `{VERSION}` is the release tag.
 - [ ] **Choose selectors that capture the visual change**: Match the selector to what the feature/fix actually changes (see Selector Guide below).
 - [ ] **Generate the report with `--details open`** so resource details blocks are expanded in screenshots — unless you specifically want to capture a collapsed resource.
 
@@ -79,15 +79,14 @@ scripts/generate-screenshot.sh \
 ## Actions
 
 ### 0. Install Playwright (PREREQUISITE — REQUIRED)
-Before any screenshot generation, ensure the correct Chromium browser is installed for the .NET Playwright package:
+Before any screenshot generation, ensure the correct Chromium browser is installed:
 ```bash
-# 1. Build the ScreenshotGenerator project first
-dotnet build src/tools/Oocx.TfPlan2Md.ScreenshotGenerator/
+# 1. Build the screenshotgenerator tool first
+cd src-go && go build -o screenshotgenerator ./tools/screenshotgenerator
 
-# 2. Install Chromium using the .NET project's Playwright script
-pwsh src/tools/Oocx.TfPlan2Md.ScreenshotGenerator/bin/Debug/net10.0/playwright.ps1 install chromium --with-deps
+# 2. Install Chromium via npx Playwright
+npx playwright install chromium --with-deps
 ```
-**⚠️ Do NOT use `npx playwright install`** — the npm Playwright version differs from the .NET `Microsoft.Playwright` NuGet package version, causing browser version mismatches (e.g., the .NET package expects `chromium_headless_shell-1200` but npm installs `chromium_headless_shell-1208`). Always use the .NET project's `playwright.ps1` script to ensure version compatibility.
 
 ### 1. Understand What Screenshots Are Needed
 Clarify with the user:
@@ -126,7 +125,7 @@ Before proceeding:
 ### 5. Add Markdown References
 Only after verification, use absolute URLs for release notes:
 ```markdown
-![Feature demonstration](https://raw.githubusercontent.com/oocx/tfplan2md/v{VERSION}/docs/features/NNN-feature-slug/feature-name.png)
+![Feature demonstration](https://raw.githubusercontent.com/51nk0r5w1m/tfplan2md/v{VERSION}/docs/features/NNN-feature-slug/feature-name.png)
 ```
 **Never use relative paths** in release notes — they break in GitHub Release pages.
 
@@ -156,21 +155,6 @@ The selector determines which part of the rendered HTML page is captured. Choosi
 | **Table formatting** | A specific table | `--selector "table:near(summary:has-text('resource'))"` |
 | **Multiple elements** (before/after, several fixes) | Wider section containing all changes | `--selector "article"` or use a parent container |
 
-### ❌ Common mistake: Using `--target-terraform-resource-id` for summary-line changes
-If a fix only changes the collapsed `<summary>` line (e.g., emoji spacing like `2 🔧`), do NOT use `--target-terraform-resource-id` — this captures the entire expanded resource details block, which shows attribute tables instead of the summary where the fix is visible.
-
-### ✅ Correct: Use a targeted CSS selector
-```bash
-# To capture wrench icon spacing fix in summary:
---selector "summary:has-text('azurerm_network_security_group')"
-
-# To capture tags emoji addition:
---selector "p:has-text('🏷️ Tags:')"
-
-# To capture module icon fix:
---selector "h3:has-text('📦 Module:')"
-```
-
 ## Image URLs for Release Notes
 
 ### ❌ Wrong: Relative paths (break in GitHub Release pages)
@@ -178,94 +162,21 @@ If a fix only changes the collapsed `<summary>` line (e.g., emoji spacing like `
 ![Screenshot](./screenshot.png)
 ![Screenshot](docs/features/NNN/screenshot.png)
 ```
-Relative paths work when browsing the file in the GitHub repository, but GitHub Release pages render the markdown body without a file context, so relative paths produce broken images.
 
 ### ✅ Correct: Absolute raw.githubusercontent.com URLs
 ```markdown
-![Screenshot](https://raw.githubusercontent.com/oocx/tfplan2md/v1.20.0/docs/issues/086/screenshot.png)
+![Screenshot](https://raw.githubusercontent.com/51nk0r5w1m/tfplan2md/v1.20.0/docs/issues/086/screenshot.png)
 ```
-Use the release tag (e.g., `v1.20.0`) in the URL. Since the release notes are committed before the tag exists, use the tag that will be created by the release pipeline. The format is:
+Use the release tag (e.g., `v1.20.0`) in the URL. The format is:
 ```
-https://raw.githubusercontent.com/oocx/tfplan2md/v{VERSION}/docs/{work-item-folder}/{filename}.png
-```
-
-**Important:** The release notes file is committed to main before the tag is created. The release workflow copies `release-notes.md` as the GitHub Release body. Since the tag is created by Versionize on the same commit, the file will be accessible at the tag URL.
-
-## Common Mistakes to Avoid
-
-### ❌ Wrong: Adding references before generating files
-```markdown
-# Release notes created first
-![Screenshot](docs/features/072/screenshot.png)
-
-# Then trying to generate the screenshot
-# Result: Broken link if generation fails
-```
-
-### ✅ Correct: Generate first, then reference
-```bash
-# 1. Generate the screenshot
-scripts/generate-release-screenshots.sh --plan ... --output-prefix feature-name
-
-# 2. Verify it exists
-ls -lh docs/features/NNN/feature-name-crop-light-1x.png
-
-# 3. Then add the markdown reference
-echo '![Feature](docs/features/NNN/feature-name-crop-light-1x.png)' >> release-notes.md
-```
-
-### ❌ Wrong: Using markdown links instead of screenshots
-```markdown
-See the changes in [comprehensive-demo.md (lines 45-67)](comprehensive-demo.md#L45-L67)
-```
-
-### ✅ Correct: Using actual PNG screenshots
-```markdown
-![Network security rules demonstration](https://raw.githubusercontent.com/oocx/tfplan2md/v1.20.0/docs/features/072/nsg-rules.png)
-```
-
-### ❌ Wrong: Referencing filenames that don't exist
-```markdown
-![Before](https://raw.githubusercontent.com/oocx/tfplan2md/abc123/docs/features/072/before-screenshot.png)
-# But the actual file is named "nsg-rules.png", not "before-screenshot.png"
-```
-
-### ✅ Correct: Verify actual filenames before referencing
-```bash
-# 1. Generate screenshots
-scripts/generate-release-screenshots.sh --plan ... --output-prefix nsg-rules --output-dir docs/features/072/
-
-# 2. List actual generated files
-ls docs/features/072/*.png
-
-# 3. Use the exact filename in markdown
-# Output: docs/features/072/nsg-rules.png
-```
-
-### ❌ Wrong: Skipping Playwright installation or using npx
-```bash
-# Wrong: Skipping installation entirely
-scripts/generate-release-screenshots.sh --plan ... --output-prefix feature ...
-# Result: "Browser not found" error
-
-# Wrong: Using npx (version mismatch with .NET Playwright package)
-npx playwright install chromium --with-deps
-scripts/generate-release-screenshots.sh --plan ... --output-prefix feature ...
-# Result: "Executable doesn't exist at chromium_headless_shell-1200" (npm installed -1208)
-```
-
-### ✅ Correct: Install via .NET Playwright script
-```bash
-dotnet build src/tools/Oocx.TfPlan2Md.ScreenshotGenerator/
-pwsh src/tools/Oocx.TfPlan2Md.ScreenshotGenerator/bin/Debug/net10.0/playwright.ps1 install chromium --with-deps
-scripts/generate-release-screenshots.sh --plan ... --output-prefix feature ...
+https://raw.githubusercontent.com/51nk0r5w1m/tfplan2md/v{VERSION}/docs/{work-item-folder}/{filename}.png
 ```
 
 ## Technical Details
 
 ### How Screenshot Generation Works
-1. **Markdown → HTML**: `src/tools/Oocx.TfPlan2Md.HtmlRenderer` renders markdown to HTML
-2. **HTML → PNG**: `src/tools/Oocx.TfPlan2Md.ScreenshotGenerator` (Playwright) captures PNG screenshots
+1. **Markdown → HTML**: `src-go/tools/htmlrenderer` renders markdown to HTML
+2. **HTML → PNG**: `src-go/tools/screenshotgenerator` (Playwright via `go-playwright`) captures PNG screenshots
 3. **Repository scripts** wrap these tools with:
    - Retry logic for network failures
    - Error reporting and troubleshooting guidance
@@ -279,5 +190,5 @@ Use the `website-visual-assets` skill (`.github/skills/website-visual-assets/SKI
 
 ## References
 - **Scripts**: `scripts/generate-release-screenshots.sh`, `scripts/generate-screenshot.sh`
-- **Tools**: `src/tools/Oocx.TfPlan2Md.HtmlRenderer`, `src/tools/Oocx.TfPlan2Md.ScreenshotGenerator`
+- **Tools**: `src-go/tools/htmlrenderer`, `src-go/tools/screenshotgenerator`
 - **Related skill**: `.github/skills/website-visual-assets/SKILL.md` (for website screenshots)

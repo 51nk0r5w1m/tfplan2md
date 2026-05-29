@@ -32,56 +32,68 @@ All changes must include appropriate tests. The project uses a comprehensive tes
 
 ### Test Types
 
-1. **Unit Tests** - Test individual components in isolation
+1. **Unit Tests** - Test individual Go packages in isolation using `go test` and `testify/assert`
 2. **Integration Tests** - Test end-to-end workflows, including Docker-based tests
-3. **Invariant Tests** - Property-based tests that verify markdown invariants that must always hold
-4. **Snapshot Tests** - Golden file tests that detect unexpected output changes
-5. **Template Isolation Tests** - Test each template independently
-6. **Fuzz Tests** - Test with edge-case inputs (special characters, Unicode, long values)
-7. **Markdownlint Integration** - Docker-based linting with actual markdownlint-cli2
-8. **Architecture Tests** - Automated enforcement of layer boundaries and dependency rules
+3. **Table-Driven Tests** - Go idiomatic test pattern using `t.Run` subtests for input/output coverage
+4. **Snapshot Tests** - Golden file tests that detect unexpected output changes (compare generated markdown against expected `.md` files)
+5. **Fuzz Tests** - Test with edge-case inputs using Go's built-in `testing/fuzz` (`go test -fuzz=FuzzXxx`)
+6. **Markdownlint Integration** - Docker-based linting with actual markdownlint-cli2
+7. **Race Detection** - All tests run with `-race` flag in CI to detect data races
 
 ### Running Tests
 
 ```bash
-# Run all tests
-dotnet test
+# Run all tests (from src-go/)
+go test ./...
 
-# Run specific test categories
-dotnet test --filter "FullyQualifiedName~MarkdownInvariantTests"
-dotnet test --filter "FullyQualifiedName~MarkdownLintIntegrationTests"
+# Run tests with race detector (required in CI)
+go test -race ./...
 
-# Run architecture tests
-dotnet test --project src/tests/Oocx.TfPlan2Md.TUnit/ --treenode-filter /*/*/ArchitectureBoundaryTests/*
+# Run tests with coverage
+go test -race -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out  # view in browser
+
+# Run a specific package
+go test ./internal/parsing/...
+
+# Run a specific test by name
+go test ./internal/parsing/... -run TestResourceChangeActions
+
+# Run table-driven subtests
+go test ./internal/markdown/... -run TestRender/create_resource
+
+# Run fuzz tests (from src-go/)
+go test ./internal/parsing/... -fuzz=FuzzParsePlan -fuzztime=30s
+
+# Run with verbose output
+go test -v ./...
+
+# Use the timeout wrapper (preferred for CI and long-running tests)
+scripts/test-with-timeout.sh -- go test -race ./...
 ```
 
 ### Architecture Rules
 
-The codebase follows strict architectural layer boundaries that are automatically enforced by architecture tests:
+The Go codebase follows strict package dependency rules enforced by `golangci-lint` import analysis:
 
-**If architecture tests fail:**
+**Key package dependency rules:**
 
-1. **Read the error message** - Tests provide clear guidance on which rule was violated and why
-2. **Review [docs/architecture-rules.md](docs/architecture-rules.md)** - Understand the layer structure and allowed dependencies
-3. **Fix the violation** - Refactor your code to respect architectural boundaries:
-   - Move code to the appropriate layer
-   - Remove forbidden dependencies
-   - Use allowed dependencies instead
+- `internal/parsing` must NOT import `internal/markdown` (prevents circular dependencies)
+- `internal/markdown` must NOT import `internal/providers` (general rendering independent of specific providers)
+- `cmd/` packages may import `internal/` packages but not vice versa
+- All implementation lives in `internal/` — no package outside this module can import it
 
-**Key architectural rules:**
+**If you introduce a dependency violation:**
+1. Check `golangci-lint run ./...` output for import cycle errors
+2. Refactor by introducing an interface in a shared `internal/` package
+3. Move shared types to a lower-level package that both can import
 
-- **Parsing** layer must NOT depend on `MarkdownGeneration` (prevents circular dependencies)
-- **Platforms** layer must NOT depend on `MarkdownGeneration` (keeps metadata independent)
-- **MarkdownGeneration** layer must NOT depend on `Providers` (general rendering independent of specific providers)
-- Exception classes must end with `Exception` suffix
-
-See [docs/architecture-rules.md](docs/architecture-rules.md) for complete layer definitions and dependency rules.
+See [docs/architecture-rules.md](docs/architecture-rules.md) for complete layer definitions.
 
 ### Markdown Quality Requirements
 
 All generated markdown must:
 - Pass markdownlint validation (MD012 and other rules)
-- Parse correctly with Markdig
 - Render correctly on GitHub, Azure DevOps, and Bitbucket
 - Have proper table structure (no blank lines between rows)
 - Have proper heading spacing (blank lines before/after)
@@ -178,9 +190,12 @@ git commit -m "feat(api)!: rename TerraformPlan to PlanResult"
 2. **Make your changes** following the coding guidelines
 3. **Ensure all checks pass**:
    ```bash
-   dotnet format --verify-no-changes
-   dotnet build
-   dotnet test
+   # From src-go/
+   gofmt -l ./...          # check formatting (no output = clean)
+   go vet ./...            # static analysis
+   go build ./...          # build
+   go test -race ./...     # tests with race detector
+   golangci-lint run ./... # full lint
    ```
 4. **Push your branch** and create a Pull Request
 5. **Wait for review** — PR validation will run automatically
@@ -208,75 +223,66 @@ git commit -m "feat(api)!: rename TerraformPlan to PlanResult"
 
 ### Code Quality Metrics
 
-This project enforces automated code quality metrics to ensure maintainable, readable code:
+This project enforces automated code quality metrics via `golangci-lint` to ensure maintainable, readable code:
 
-- **Cyclomatic Complexity** (CA1502): Maximum 15 per method
-- **Maintainability Index** (CA1505/CA1506): Minimum 20 per method/class (on 0-100 scale)
-- **Line Length** (IDE0055): Maximum 160 characters
-- **File Length**: Target ~300 lines per file (guideline, not enforced)
+- **Cyclomatic Complexity** (`gocyclo`/`cyclop`): Maximum 15 per function
+- **Function Length** (`funlen`): Maximum ~80 lines per function
+- **Line Length**: Maximum 160 characters
+- **File Length**: Target ~300 lines per file (guideline)
 
-These metrics are enforced at build time and will cause build failures if violated. Thresholds are defined in [CodeMetricsConfig.txt](../src/CodeMetricsConfig.txt) and [.editorconfig](../.editorconfig).
+These metrics are enforced at CI time via `golangci-lint` and will cause PR validation failures if violated. Configuration is in `.golangci.yml`.
 
 **Suppression Policy:**
 
 Suppressions are allowed only when refactoring would harm readability or maintainability. Requirements:
 
-1. Use `[SuppressMessage]` attribute with clear `Justification` parameter
-2. Add a comment above the suppressed member explaining why the suppression is necessary
+1. Use `//nolint:lintername` inline comment with a justification
+2. Add a comment above the suppressed line/block explaining why suppression is necessary
 3. Reference related feature/task documentation if applicable
 4. Obtain maintainer approval in the PR review
 
 Example:
-```csharp
-// Complex state machine requires 18 branches for RFC compliance
-// Approved by maintainer in PR #346
-[SuppressMessage("Maintainability", "CA1502:Avoid excessive complexity", 
-    Justification = "State machine for RFC 9110 HTTP semantics requires explicit branch handling")]
-public HttpStatus ProcessRequest(HttpRequest request)
-{
-    // Implementation
+```go
+// Complex state machine requires > 15 branches for RFC compliance.
+// Approved by maintainer in PR #346.
+//nolint:cyclop // RFC 9110 HTTP semantics require explicit handling of each status class
+func processRequest(req *http.Request) httpStatus {
+    // implementation
 }
 ```
 
 See [docs/commenting-guidelines.md](docs/commenting-guidelines.md) for complete suppression guidelines.
 
-### Access Modifiers
+### Package Visibility
 
-tfplan2md is a standalone CLI tool, not a class library. Use the most restrictive access modifier that works:
+`tfplan2md` is a standalone CLI tool. Use Go's visibility conventions:
 
-- ✅ `private` - Default for class members
-- ✅ `internal` - For cross-assembly visibility within the solution
-- ⚠️ `public` - Only for main entry points or when absolutely necessary
+- ✅ Unexported (`camelCase`) — default for all implementation details
+- ✅ Exported (`PascalCase`) — only when needed across package boundaries
+- ⚠️ All implementation lives in `internal/` — enforced by Go toolchain; no external imports possible
 
-**Never use `public` just for testing.** Instead, use `InternalsVisibleTo` to expose `internal` members to test projects.
+**Never export identifiers just for testing.** Instead, use same-package `_test.go` files to access unexported identifiers.
 
-**Why:** This prevents false concerns about API backwards compatibility and breaking changes, since there are no external consumers of the code.
+**Why:** This prevents false concerns about API backwards compatibility, since there are no external consumers of the code.
 
 ### Code Comments
 
 All code must be thoroughly documented following [docs/commenting-guidelines.md](docs/commenting-guidelines.md):
 
-- **All members** (public, internal, private) require XML doc comments
+- **All exported identifiers** require Go doc comments (start with `// IdentifierName ...`)
+- **Unexported identifiers** should have comments when purpose is not immediately obvious
 - Comments must explain **"why"** not just **"what"**
-- Use standard XML tags: `<summary>`, `<param>`, `<returns>`, `<remarks>`, `<example>`
 - Reference related features/specifications for traceability
 - Keep comments synchronized with code changes
 
 Examples:
 
-```csharp
-/// <summary>
-/// Parses Terraform plan JSON and extracts resource changes.
-/// </summary>
-/// <param name="planFilePath">Absolute path to the plan JSON file.</param>
-/// <returns>Collection of resource changes found in the plan.</returns>
-/// <remarks>
-/// Uses streaming deserialization for memory efficiency on large files.
-/// Related feature: docs/features/008-comprehensive-demo/
-/// </remarks>
-internal async Task<IReadOnlyList<ResourceChange>> ParseAsync(string planFilePath)
-{
-    // Implementation
+```go
+// ParsePlan reads a Terraform plan JSON file and returns the parsed plan.
+// It uses streaming JSON decoding to handle large plan files efficiently.
+// Related feature: docs/features/008-comprehensive-demo/
+func ParsePlan(path string) (*Plan, error) {
+    // implementation
 }
 ```
 
@@ -290,86 +296,88 @@ Understanding the codebase organization will help you navigate and contribute ef
 
 ```
 tfplan2md/
-├── src/Oocx.TfPlan2Md/              # Main application
-│   ├── CLI/                         # Command-line interface
-│   ├── Parsing/                     # Terraform plan JSON parsing
-│   ├── MarkdownGeneration/          # Core rendering logic
-│   ├── Providers/                   # Provider-specific implementations
-│   ├── RenderTargets/               # Platform-specific rendering (GitHub, Azure DevOps, Bitbucket)
-│   └── Platforms/                   # Cloud platform utilities (Azure)
-├── src/tests/                       # Test projects
-└── docs/                            # Documentation
+├── src-go/                              # Go implementation
+│   ├── cmd/tfplan2md/                   # Entry point (main.go)
+│   ├── internal/
+│   │   ├── cli/                         # Command-line parsing (cobra)
+│   │   ├── parsing/                     # Terraform plan JSON parsing
+│   │   ├── markdown/                    # Core report building and rendering
+│   │   ├── providers/                   # Provider-specific logic (azurerm, azapi, azuredevops)
+│   │   ├── rendertargets/               # Platform-specific formatting (GitHub, Azure DevOps)
+│   │   └── platforms/                   # Cloud platform utilities (Azure)
+│   ├── testdata/                        # Shared test fixtures (plan JSON + expected snapshots)
+│   ├── go.mod
+│   └── go.sum
+└── docs/                                # Documentation
 ```
 
 ### Provider Architecture
 
-Terraform provider-specific code (azurerm, azapi, azuredevops) is organized into modular provider implementations:
+Terraform provider-specific code (azurerm, azapi, azuredevops) is organized into modular provider packages under `src-go/internal/providers/`:
 
-**Location:** `src/Oocx.TfPlan2Md/Providers/`
+Each provider implements the `Provider` interface:
+- **Attribute filters**: Which JSON attributes to include/exclude
+- **Value formatters**: How to display specific attribute values
+- **Icon rules**: Embedded JSON loaded via `//go:embed` for resource-type icons
 
-Each provider is self-contained:
-- **Templates** (`.sbn` files): Provider-specific Scriban templates
-- **Models**: Resource view models and factories for complex resources
-- **Helpers**: Provider-specific Scriban helper functions
-- **Provider contract**: `IProvider` implementation plus any optional capability interfaces needed for registration
-
-**Adding a new provider?** See [src/Oocx.TfPlan2Md/Providers/README.md](src/Oocx.TfPlan2Md/Providers/README.md) for a comprehensive guide.
+**Adding a new provider?** Create a new package under `internal/providers/<name>/`, implement the `Provider` interface, and register it in `internal/providers/registry.go`.
 
 ### Core Components
 
 | Component | Path | Purpose |
 |-----------|------|---------|
-| **CLI** | `CLI/` | Command-line parsing and orchestration |
-| **Parsing** | `Parsing/` | Terraform plan JSON deserialization |
-| **MarkdownGeneration** | `MarkdownGeneration/` | Core report building and rendering |
-| **Providers** | `Providers/{Provider}/` | Provider-specific logic (azurerm, azapi, azuredevops) |
-| **RenderTargets** | `RenderTargets/` | Platform-specific diff formatting (GitHub, Azure DevOps, Bitbucket) |
-| **Platforms** | `Platforms/Azure/` | Azure-specific utilities (principal mapping, role names) |
+| **CLI** | `internal/cli/` | Command-line parsing and orchestration |
+| **Parsing** | `internal/parsing/` | Terraform plan JSON deserialization |
+| **Markdown** | `internal/markdown/` | Core report building and rendering |
+| **Providers** | `internal/providers/{name}/` | Provider-specific logic (azurerm, azapi, azuredevops) |
+| **RenderTargets** | `internal/rendertargets/` | Platform-specific diff formatting (GitHub, Azure DevOps, Bitbucket) |
+| **Platforms** | `internal/platforms/azure/` | Azure-specific utilities (principal mapping, role names) |
 
 ### Architecture Documentation
 
 For comprehensive architecture details, see:
 - [docs/architecture.md](docs/architecture.md) - Full arc42 architecture documentation
 - [docs/spec.md](docs/spec.md) - Project specification and technical details
-- [src/Oocx.TfPlan2Md/Providers/README.md](src/Oocx.TfPlan2Md/Providers/README.md) - Provider development guide
 
 ## Local Development Setup
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Go 1.22+](https://go.dev/dl/)
 - [Git](https://git-scm.com/)
 - [Docker](https://www.docker.com/) (for running integration tests)
+- [golangci-lint](https://golangci-lint.run/usage/install/) (for local linting)
 - **Shell tools**: Keep release scripts POSIX-compatible; avoid GNU awk-only extensions (e.g., function-local params, match capture arrays). Use `POSIXLY_CORRECT=1` when testing shell changes locally.
 
 ### Getting Started
 
 ```bash
 # Clone the repository
-git clone https://github.com/oocx/tfplan2md.git
-cd tfplan2md
+git clone https://github.com/51nk0r5w1m/tfplan2md.git
+cd tfplan2md/src-go
 
-# Restore tools (including Husky for git hooks)
-dotnet tool restore
+# Download module dependencies
+go mod download
 
-# Install git hooks
-dotnet husky install
+# Install git hooks (commit-msg validation)
+cp scripts/hooks/commit-msg .git/hooks/commit-msg
+chmod +x .git/hooks/commit-msg
 
 # Build and test
-dotnet build
-dotnet test
+go build ./...
+go test -race ./...
 ```
 
 ### Pre-commit Hooks
 
-This project uses [Husky.Net](https://github.com/alirezanet/Husky.Net) for git hooks:
+This project uses shell-based git hooks for quality gates:
 
-- **pre-commit**: Runs `dotnet format --verify-no-changes` and `dotnet build`
+- **pre-commit**: Runs `gofmt -l ./...` and `go vet ./...`
 - **commit-msg**: Validates commit message follows Conventional Commits format
 
 If your commit is rejected:
-1. **Format issues**: Run `dotnet format` to fix formatting
-2. **Build errors**: Fix the build errors before committing
+1. **Format issues**: Run `gofmt -w ./...` and `goimports -w ./...` to fix formatting
+2. **Vet errors**: Fix the reported issues before committing
 3. **Commit message**: Ensure your message follows the format `type: description`
 
 ## Maintaining Azure API Documentation Mappings
@@ -417,13 +425,13 @@ Update the mappings when:
 
 4. **Test the changes:**
    ```bash
-   dotnet build
-   dotnet test
+   go build ./...
+   go test -race ./...
    ```
 
 5. **Commit the updated mappings:**
    ```bash
-   git add src/Oocx.TfPlan2Md/Providers/AzApi/Data/AzureApiDocumentationMappings.json
+   git add src-go/internal/providers/azapi/data/AzureApiDocumentationMappings.json
    git commit -m "chore: update Azure API documentation mappings"
    ```
 
@@ -510,13 +518,13 @@ Update the mappings when:
 
 4. **Test the changes:**
    ```bash
-   dotnet build
-   dotnet test
+   go build ./...
+   go test -race ./...
    ```
 
 5. **Commit the updated mappings:**
    ```bash
-   git add src/Oocx.TfPlan2Md/Platforms/Azure/MicrosoftGraphAppRoles.json
+   git add src-go/internal/platforms/azure/MicrosoftGraphAppRoles.json
    git commit -m "chore: update Microsoft Graph app role mappings"
    ```
 
@@ -549,7 +557,7 @@ Releases are automated via GitHub Actions:
 1. When commits are pushed to `main`, the CI workflow runs Versionize
 2. Versionize only runs when Docker-relevant files changed (runtime code, examples, build config)
 3. If there are `feat:`, `fix:`, or `BREAKING CHANGE` commits, Versionize:
-   - Bumps the version in `.csproj`
+   - Bumps the version in `go.mod` (or a dedicated version file)
    - Updates `CHANGELOG.md`
    - Creates a git tag (e.g., `v0.2.0`)
 4. The tag push triggers the Release workflow which:

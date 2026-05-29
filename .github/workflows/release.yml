@@ -232,7 +232,6 @@ jobs:
     name: Build ${{ matrix.platform }} Binary
     if: needs.release.outputs.version != ''
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
     needs: release
     permissions:
       contents: write
@@ -242,137 +241,76 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux builds (use container for consistent glibc)
+          # Linux builds (static binaries via CGO_ENABLED=0)
           - platform: linux-x64
             os: ubuntu-latest
-            rid: linux-x64
+            goos: linux
+            goarch: amd64
             archive_ext: tar.gz
             binary_name: tfplan2md
-            container: mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:6d7f69bc7bc9d4510ca255977b1f53ce52a79307e048a91450b2aecd63627cc3
-            needs_clang: true
             compress_with_upx: true
           - platform: linux-arm64
             os: ubuntu-24.04-arm
-            rid: linux-arm64
+            goos: linux
+            goarch: arm64
             archive_ext: tar.gz
             binary_name: tfplan2md
-            container: ''
-            needs_clang: true
             compress_with_upx: true
-          # Alpine/musl builds (for Alpine Linux, Atlantis, and other musl-based environments)
-          # Note: Alpine job containers are NOT used because:
-          # - actions/setup-dotnet requires bash, which Alpine lacks by default
-          # - JavaScript Actions in Alpine containers are only supported on x64 (not ARM64)
-          # Instead, we run the build inside a Docker container via a build step.
+          # Alpine/musl builds — Go produces static binaries with CGO_ENABLED=0,
+          # so no special musl toolchain or Docker container is needed.
           - platform: linux-musl-x64
             os: ubuntu-latest
-            rid: linux-musl-x64
+            goos: linux
+            goarch: amd64
             archive_ext: tar.gz
             binary_name: tfplan2md
-            container: ''
-            docker_platform: linux/amd64
-            needs_clang: false
             compress_with_upx: true
           - platform: linux-musl-arm64
             os: ubuntu-24.04-arm
-            rid: linux-musl-arm64
+            goos: linux
+            goarch: arm64
             archive_ext: tar.gz
             binary_name: tfplan2md
-            container: ''
-            docker_platform: linux/arm64
-            needs_clang: false
             compress_with_upx: true
           # Windows builds
           - platform: windows-x64
             os: windows-latest
-            rid: win-x64
+            goos: windows
+            goarch: amd64
             archive_ext: zip
             binary_name: tfplan2md.exe
-            container: ''
-            needs_clang: false
             compress_with_upx: true
-          # Note: windows-arm64 removed due to lack of native ARM64 Windows runners
-          # and low usage (<1%). Can be re-added if native runners become available.
           # macOS builds
-          # Note: macos-x64 (Intel) removed — GitHub Actions macos-13 runner is no longer supported.
           # Note: UPX is intentionally excluded for macOS: UPX modifies the Mach-O binary, which
-          # invalidates code signatures and triggers macOS Gatekeeper. Re-signing would require
-          # Apple Developer certificates; without signing, the binary is quarantined on user machines.
+          # invalidates code signatures and triggers macOS Gatekeeper.
           - platform: macos-arm64
             os: macos-14  # Apple Silicon runner
-            rid: osx-arm64
+            goos: darwin
+            goarch: arm64
             archive_ext: tar.gz
             binary_name: tfplan2md
-            container: ''
-            needs_clang: false
             compress_with_upx: false
 
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install Xcode Command Line Tools (macOS)
-        if: startsWith(matrix.platform, 'macos-')
-        run: |
-          # Xcode CLT is required for .NET NativeAOT compilation on macOS
-          # xcode-select --install starts installer, but it may already be installed
-          sudo xcode-select --install 2>&1 || true
-          # Verify installation
-          if ! xcode-select -p &>/dev/null; then
-            echo "Error: Xcode Command Line Tools not found after installation"
-            exit 1
-          fi
-          echo "Xcode Command Line Tools installed at: $(xcode-select -p)"
-
-      - name: Setup .NET
-        if: "!startsWith(matrix.platform, 'linux-musl-')"
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          dotnet-version: '10.x'
-
-      - name: Install NativeAOT linker prerequisite (Linux)
-        if: matrix.needs_clang
-        run: |
-          if command -v apt-get &>/dev/null; then
-            # linux-x64 runs in a container as root; linux-arm64 runs directly on the runner
-            # as a non-root user and requires sudo (same pattern as the UPX install step).
-            if [ "$(id -u)" = "0" ]; then
-              apt-get update
-              apt-get install -y --no-install-recommends clang
-            else
-              sudo apt-get update
-              sudo apt-get install -y --no-install-recommends clang
-            fi
-          else
-            apk add --no-cache clang build-base zlib-dev linux-headers
-          fi
+          go-version: '1.22'
 
       - name: Build Binary
-        if: "!startsWith(matrix.platform, 'linux-musl-')"
         shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
         run: |
-          dotnet publish src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj \
-            -c Release \
-            -r ${{ matrix.rid }} \
-            --self-contained true \
-            -p:PublishAot=true \
-            -o artifacts/${{ matrix.platform }}
-
-      - name: Build Binary (musl via Docker)
-        if: startsWith(matrix.platform, 'linux-musl-')
-        run: |
-          docker run --rm \
-            --platform ${{ matrix.docker_platform }} \
-            -v "$(pwd):/work" \
-            -w /work \
-            -e RID="${{ matrix.rid }}" \
-            -e PLATFORM="${{ matrix.platform }}" \
-            mcr.microsoft.com/dotnet/sdk:10.0-alpine@sha256:0191ff386e93923edf795d363ea0ae0669ce467ada4010b370644b670fa495c1 \
-            sh -c 'apk add --no-cache clang build-base zlib-dev linux-headers && dotnet publish src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -c Release -r "$RID" --self-contained true -p:PublishAot=true -o "/work/artifacts/$PLATFORM"'
-
-      - name: Fix artifact ownership (musl builds)
-        if: startsWith(matrix.platform, 'linux-musl-')
-        run: sudo chown -R "$(id -u):$(id -g)" "artifacts/${{ matrix.platform }}"
+          mkdir -p artifacts/${{ matrix.platform }}
+          go build -trimpath -ldflags="-s -w" \
+            -o artifacts/${{ matrix.platform }}/${{ matrix.binary_name }} \
+            ./src-go/cmd/tfplan2md/
 
       - name: Install UPX (Linux)
         if: startsWith(matrix.platform, 'linux-') && matrix.compress_with_upx
@@ -447,14 +385,9 @@ jobs:
           VERSION="${{ needs.release.outputs.version }}"
           # Verify binary is executable
           test -x artifacts/${{ matrix.platform }}/${{ matrix.binary_name }}
-          # Smoke test: musl binaries link against musl libc and can't run directly on glibc Ubuntu
-          if [[ "${{ matrix.platform }}" == linux-musl-* ]]; then
-            docker run --rm \
-              --platform ${{ matrix.docker_platform }} \
-              -v "$(pwd)/artifacts/${{ matrix.platform }}:/musl_binary" \
-              mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine@sha256:4f08c162590324de60f31937f5b5fa9f2b5eddaa4f0aaec3c872f855bf16c36c \
-              /musl_binary/${{ matrix.binary_name }} --help > /dev/null
-          else
+          # Go CGO_ENABLED=0 produces fully static binaries — they run on both glibc and musl.
+          # A direct smoke test works for all Linux platforms.
+          if [[ "${{ runner.os }}" != "Windows" && "${{ runner.os }}" != "macOS" ]]; then
             artifacts/${{ matrix.platform }}/${{ matrix.binary_name }} --help > /dev/null
           fi
           # Verify archive integrity

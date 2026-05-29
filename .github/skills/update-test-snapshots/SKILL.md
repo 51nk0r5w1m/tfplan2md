@@ -1,7 +1,7 @@
 ---
 name: update-test-snapshots
 description: Regenerate test snapshot files after intentional markdown output changes. Use after modifying templates or rendering logic.
-compatibility: Requires .NET SDK and access to the test project.
+compatibility: Requires Go 1.22+ and access to the repository workspace.
 ---
 
 # Update Test Snapshots
@@ -30,8 +30,8 @@ scripts/update-test-snapshots.sh
 ```
 
 This single command:
-1. Deletes all existing snapshot files in `src/tests/Oocx.TfPlan2Md.Tests/TestData/Snapshots/`
-2. Runs snapshot tests (which will fail but create new snapshots)
+1. Deletes all existing snapshot files in `src-go/testdata/snapshots/`
+2. Runs snapshot tests with `UPDATE_SNAPSHOTS=1` (creates new golden files)
 3. Counts generated snapshots to verify success
 4. Runs snapshot tests again to verify they pass with new baselines
 5. Reports success with instructions to review changes
@@ -47,33 +47,35 @@ This single command:
 [INFO] ✅ All snapshot tests pass!
 
 Snapshots updated successfully. Review changes with:
-  scripts/git-diff.sh src/tests/Oocx.TfPlan2Md.Tests/TestData/Snapshots
+  scripts/git-diff.sh src-go/testdata/snapshots/
 ```
 
 ## When to Use
-- After intentionally modifying markdown rendering logic (C# renderers)
+- After intentionally modifying Go rendering logic
 - After changing markdown rendering logic
 - After updating formatting rules (value escaping, table formatting, etc.)
 - After adding new snapshot tests
 - When snapshot tests fail due to expected changes
 
 ## What Gets Updated
-Snapshot files in `src/tests/Oocx.TfPlan2Md.Tests/TestData/Snapshots/`:
-- `comprehensive-demo.md` - Full comprehensive demo output
-- `summary-template.md` - Summary template output
-- `breaking-plan.md` - Edge cases with escaping
-- `role-assignments.md` - Role assignment rendering
-- `firewall-rules.md` - Firewall rule semantic diff
-- `multi-module.md` - Multi-module plan output
+Snapshot files in `src-go/testdata/snapshots/`:
+- `comprehensive-demo.golden.md` - Full comprehensive demo output
+- `summary-template.golden.md` - Summary template output
+- `breaking-plan.golden.md` - Edge cases with escaping
+- `role-assignments.golden.md` - Role assignment rendering
+- `firewall-rules.golden.md` - Firewall rule semantic diff
+- `multi-module.golden.md` - Multi-module plan output
 
 ## After Running
 Always review the changes:
 ```bash
-scripts/git-diff.sh src/tests/Oocx.TfPlan2Md.Tests/TestData/Snapshots/
+scripts/git-diff.sh src-go/testdata/snapshots/
 ```
 
 Verify the changes match your expectations, then stage and commit:
 ```bash
-git add src/tests/Oocx.TfPlan2Md.Tests/TestData/Snapshots/
-git commit -m "test: update snapshots after [describe change]"
+git add src-go/testdata/snapshots/
+git commit -m "test: update snapshots after [describe change]
+
+SNAPSHOT_UPDATE_OK: [explain why snapshot changes are correct]"
 ```

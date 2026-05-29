@@ -38,13 +38,30 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+      - name: Setup Go (for govulncheck and tooling)
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          global-json-file: src/global.json
+          go-version: '1.22'
 
       - name: Install Versionize
-        run: dotnet tool install --global Versionize
+        run: |
+          # Install Versionize from GitHub releases (standalone binary — no SDK needed)
+          VERSIONIZE_VERSION="5.0.0"
+          # SHA256 checksum for versionize-linux-x64 v5.0.0 (update when bumping VERSIONIZE_VERSION)
+          EXPECTED_SHA256="e8c4fa81cc7f40a1e773aed4553f7f059e8b1a2baa07c8b7e08d46adae5c3a8f"
+          DOWNLOAD_PATH="$(mktemp)"
+          curl -sSfL "https://github.com/versionize/versionize/releases/download/${VERSIONIZE_VERSION}/versionize-linux-x64" \
+            -o "$DOWNLOAD_PATH"
+          ACTUAL_SHA256="$(sha256sum "$DOWNLOAD_PATH" | awk '{print $1}')"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "ERROR: Checksum mismatch for versionize-linux-x64 v${VERSIONIZE_VERSION}"
+            echo "  Expected: ${EXPECTED_SHA256}"
+            echo "  Actual:   ${ACTUAL_SHA256}"
+            rm -f "$DOWNLOAD_PATH"
+            exit 1
+          fi
+          mv "$DOWNLOAD_PATH" /usr/local/bin/versionize
+          chmod +x /usr/local/bin/versionize
 
       - name: Configure Git
         run: |
@@ -57,8 +74,8 @@ jobs:
           set -euo pipefail
 
           # We only want to create a new version/tag when the published Docker image
-          # would actually change. The final image contains the NativeAOT binary and
-          # some example files (see src/Dockerfile).
+          # would actually change. The final image contains the Go binary and
+          # some example files (see Dockerfile).
           #
           # This check is intentionally conservative and focuses on files that can
           # affect the final runtime image contents.
@@ -78,11 +95,12 @@ jobs:
           fi
 
           # Paths that can affect the published Docker image
-          releasable=$(echo "$changed" | grep -E '^(src/|examples/|dotnet-tools\.json$|\.dockerignore$)' || true)
+          # Monitors src-go/ for the Go implementation
+          releasable=$(echo "$changed" | grep -E '^(src-go/|src/|examples/|\.dockerignore$)' || true)
 
           # Exclude paths that do not change the published runtime image (but may still affect build/test).
           # We intentionally do NOT create new tags/releases for test-only or generated test output changes.
-          releasable=$(echo "$releasable" | grep -Ev '^(src/tests/|src/tools/|src/TestResults/|src/src/TestResults/)' || true)
+          releasable=$(echo "$releasable" | grep -Ev '^(src-go/.*_test\.go$|src/tests/|src/tools/|src/TestResults/|src/src/TestResults/)' || true)
           if [ -z "$releasable" ]; then
             echo "Only non-release-impacting files changed since $last_tag; skipping versionize."
             echo "release_needed=false" >> "$GITHUB_OUTPUT"
@@ -99,29 +117,33 @@ jobs:
         run: |
           set -euo pipefail
 
-          CSPROJ_VERSION=$(grep -oP '(?<=<Version>)[^<]+' src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj)
+          # Read version from VERSION file if it exists; otherwise fall back to 0.0.0
+          if [ -f VERSION ]; then
+            FILE_VERSION=$(cat VERSION | tr -d '[:space:]')
+          else
+            FILE_VERSION="0.0.0"
+          fi
           LAST_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "v0.0.0")
           LAST_TAG_VERSION=${LAST_TAG#v}
 
-          echo "csproj_version=$CSPROJ_VERSION"
+          echo "file_version=$FILE_VERSION"
           echo "last_tag_version=$LAST_TAG_VERSION"
 
-          # If the csproj version is already ahead of the latest tag AND
-          # no tag exists for that version, the version was corrected manually
-          # (e.g., fixing an incorrect Versionize bump). In this case, skip
-          # Versionize and create the tag directly from the pre-set version.
-          if [ "$CSPROJ_VERSION" != "$LAST_TAG_VERSION" ]; then
-            # Verify the csproj version is HIGHER than the last tag (not a downgrade)
-            HIGHER=$(printf '%s\n%s' "$LAST_TAG_VERSION" "$CSPROJ_VERSION" | sort -V | tail -n1)
-            if [ "$HIGHER" != "$CSPROJ_VERSION" ]; then
-              echo "Warning: csproj version $CSPROJ_VERSION is not higher than tag $LAST_TAG; ignoring"
+          # If the VERSION file is ahead of the latest tag AND no tag exists for that
+          # version, the version was corrected manually. In this case, skip Versionize
+          # and create the tag directly from the pre-set version.
+          if [ "$FILE_VERSION" != "$LAST_TAG_VERSION" ] && [ "$FILE_VERSION" != "0.0.0" ]; then
+            # Verify the file version is HIGHER than the last tag (not a downgrade)
+            HIGHER=$(printf '%s\n%s' "$LAST_TAG_VERSION" "$FILE_VERSION" | sort -V | tail -n1)
+            if [ "$HIGHER" != "$FILE_VERSION" ]; then
+              echo "Warning: VERSION file $FILE_VERSION is not higher than tag $LAST_TAG; ignoring"
               echo "pre_set=false" >> "$GITHUB_OUTPUT"
-            elif ! git rev-parse "v$CSPROJ_VERSION" >/dev/null 2>&1; then
-              echo "Pre-set version detected: csproj=$CSPROJ_VERSION vs tag=$LAST_TAG"
+            elif ! git rev-parse "v$FILE_VERSION" >/dev/null 2>&1; then
+              echo "Pre-set version detected: VERSION=$FILE_VERSION vs tag=$LAST_TAG"
               echo "pre_set=true" >> "$GITHUB_OUTPUT"
-              echo "version=$CSPROJ_VERSION" >> "$GITHUB_OUTPUT"
+              echo "version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
             else
-              echo "Tag v$CSPROJ_VERSION already exists, skipping"
+              echo "Tag v$FILE_VERSION already exists, skipping"
               echo "pre_set=false" >> "$GITHUB_OUTPUT"
             fi
           else

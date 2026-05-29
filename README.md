@@ -2,7 +2,7 @@
 
 ![tfplan2md](website/src/assets/images/logo-full.svg)
 
-[![CI](https://github.com/oocx/tfplan2md/workflows/CI/badge.svg)](https://github.com/oocx/tfplan2md/actions/workflows/ci.yml) [![Release](https://github.com/oocx/tfplan2md/workflows/Release/badge.svg)](https://github.com/oocx/tfplan2md/actions/workflows/release.yml) [![Coverage](https://raw.githubusercontent.com/oocx/tfplan2md/coverage-data/assets/coverage-badge.svg)](https://raw.githubusercontent.com/oocx/tfplan2md/coverage-data/docs/coverage/history.json) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Docker Pulls](https://img.shields.io/docker/pulls/oocx/tfplan2md)](https://hub.docker.com/r/oocx/tfplan2md) [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/) [![Docker](https://img.shields.io/badge/docker-recommended-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/oocx/tfplan2md) [![Terraform](https://img.shields.io/badge/Terraform-1.0+-844FBA?logo=terraform)](https://www.terraform.io/) [![GitHub Copilot](https://img.shields.io/badge/GitHub%20Copilot-100%25-blue?logo=github)](https://github.com/features/copilot) [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/oocx/tfplan2md/badge)](https://securityscorecards.dev/viewer/?uri=github.com/oocx/tfplan2md)
+[![CI](https://github.com/oocx/tfplan2md/workflows/CI/badge.svg)](https://github.com/oocx/tfplan2md/actions/workflows/ci.yml) [![Release](https://github.com/oocx/tfplan2md/workflows/Release/badge.svg)](https://github.com/oocx/tfplan2md/actions/workflows/release.yml) [![Coverage](https://raw.githubusercontent.com/oocx/tfplan2md/coverage-data/assets/coverage-badge.svg)](https://raw.githubusercontent.com/oocx/tfplan2md/coverage-data/docs/coverage/history.json) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Docker Pulls](https://img.shields.io/docker/pulls/oocx/tfplan2md)](https://hub.docker.com/r/oocx/tfplan2md) [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev/) [![Docker](https://img.shields.io/badge/docker-recommended-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/oocx/tfplan2md) [![Terraform](https://img.shields.io/badge/Terraform-1.0+-844FBA?logo=terraform)](https://www.terraform.io/) [![GitHub Copilot](https://img.shields.io/badge/GitHub%20Copilot-100%25-blue?logo=github)](https://github.com/features/copilot) [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/oocx/tfplan2md/badge)](https://securityscorecards.dev/viewer/?uri=github.com/oocx/tfplan2md)
 
 **📘 [Official Website](https://oocx.github.io/tfplan2md/)**
 
@@ -160,24 +160,17 @@ Download pre-built binaries for your platform from [GitHub Releases](https://git
 #### Platform Requirements
 
 **Linux:**
-- glibc 2.39 or newer (binaries built on Ubuntu 24.04)
-- No .NET runtime required (self-contained NativeAOT)
-- Supported distributions:
-  - Ubuntu 24.04 LTS or newer
-  - Debian 13 (Trixie) or newer
-  - RHEL 10 or newer
-  - Other glibc-based distributions with glibc 2.39+
-- **Note:** For Alpine Linux or other musl-based systems, use the `linux-musl-x64` or `linux-musl-arm64` binary or the Docker image
+- No runtime required (self-contained static binary with `CGO_ENABLED=0`)
+- Supports: Ubuntu 22.04+, Debian 12+, Alpine, RHEL 9+, and any glibc or musl-based distribution
 
 **Windows:**
 - Windows 10 version 1607 or newer (x64)
-- No .NET runtime required (self-contained NativeAOT)
-- **Note:** Windows ARM64 builds are not currently available. Use x64 binary (runs via emulation) or Docker image.
+- No runtime required (self-contained static binary)
+- **Note:** Windows ARM64 builds are not currently available — use x64 binary or Docker image.
 
 **macOS:**
 - macOS 11 (Big Sur) or newer for Apple Silicon builds
-- No .NET runtime required (self-contained NativeAOT)
-- **Note:** Intel (x64) builds are not currently available. Use Docker image or build from source.
+- No runtime required (self-contained static binary)
 
 #### Use Cases
 
@@ -190,12 +183,12 @@ Download pre-built binaries for your platform from [GitHub Releases](https://git
 
 ### Option 4: Build from Source
 
-Requires .NET 10 SDK.
+Requires [Go 1.22+](https://go.dev/dl/).
 
 ```bash
-git clone https://github.com/oocx/tfplan2md.git
-cd tfplan2md
-dotnet build
+git clone https://github.com/51nk0r5w1m/tfplan2md.git
+cd tfplan2md/src-go
+go build ./...
 ```
 
 ## Usage
@@ -212,8 +205,8 @@ terraform show -json plan.tfplan | docker run -i oocx/tfplan2md
 # Using Docker with mounted volume
 docker run -v $(pwd):/data oocx/tfplan2md /data/plan.json
 
-# Or with .NET
-dotnet run --project src/Oocx.TfPlan2Md -- plan.json
+# Or using the Go binary directly
+./tfplan2md plan.json
 ```
 
 ### With output file
@@ -452,27 +445,20 @@ docker run -v $(pwd):/data oocx/tfplan2md --debug \
 
 ### HTML renderer (development tool)
 
-Render existing tfplan2md reports to HTML with GitHub- or Azure-DevOps-like output using the standalone tool in [src/tools/Oocx.TfPlan2Md.HtmlRenderer](src/tools/Oocx.TfPlan2Md.HtmlRenderer):
+Render existing tfplan2md reports to HTML with GitHub- or Azure-DevOps-like output using the standalone tool in `src-go/tools/htmlrenderer`:
 
 ```bash
-dotnet run --project src/tools/Oocx.TfPlan2Md.HtmlRenderer -- \
-  --input artifacts/comprehensive-demo.md \
-  --flavor github
+# Build the HTML renderer tool
+go build -o htmlrenderer ./tools/htmlrenderer
 
-dotnet run --project src/tools/Oocx.TfPlan2Md.HtmlRenderer -- \
-  --input artifacts/comprehensive-demo.md \
-  --flavor azdo \
-  --template src/tools/Oocx.TfPlan2Md.HtmlRenderer/templates/azdo-wrapper.html \
+./htmlrenderer --input artifacts/comprehensive-demo.md --flavor github
+./htmlrenderer --input artifacts/comprehensive-demo.md --flavor azdo \
   --output artifacts/comprehensive-demo.azdo.html
 ```
 
 ### Screenshot generator (development tool)
 
-Generate PNG or JPEG screenshots from HTML using Playwright in [src/tools/Oocx.TfPlan2Md.ScreenshotGenerator](src/tools/Oocx.TfPlan2Md.ScreenshotGenerator). Install the browser once after build:
-
-```bash
-pwsh src/tools/Oocx.TfPlan2Md.ScreenshotGenerator/bin/Debug/net10.0/playwright.ps1 install chromium --with-deps
-```
+Generate PNG or JPEG screenshots from HTML using Playwright in `src-go/tools/screenshotgenerator`.
 
 **Automated screenshot generation (recommended for website):**
 
@@ -513,37 +499,26 @@ This generates 12 screenshot files (thumbnail/lightbox × light/dark × 1x/2x DP
 **Manual usage examples** (formats: png default, jpeg; WebP deferred):
 
 ```bash
+# Build the screenshot tool
+go build -o screenshotgenerator ./tools/screenshotgenerator
+
 # Default viewport (1920x1080), output derived from input name
-dotnet run --project src/tools/Oocx.TfPlan2Md.ScreenshotGenerator -- \
-  --input artifacts/comprehensive-demo.github.html
+./screenshotgenerator --input artifacts/comprehensive-demo.github.html
 
 # Custom viewport
-dotnet run --project src/tools/Oocx.TfPlan2Md.ScreenshotGenerator -- \
+./screenshotgenerator \
   --input artifacts/comprehensive-demo.github.html \
   --output artifacts/screenshot-1280x720.png \
-  --width 1280 \
-  --height 720
+  --width 1280 --height 720
 
 # Full-page capture
-dotnet run --project src/tools/Oocx.TfPlan2Md.ScreenshotGenerator -- \
+./screenshotgenerator \
   --input artifacts/comprehensive-demo.github.html \
   --output artifacts/full-report.png \
   --full-page
 
-# JPEG with quality
-dotnet run --project src/tools/Oocx.TfPlan2Md.ScreenshotGenerator -- \
-  --input artifacts/comprehensive-demo.github.html \
-  --output artifacts/screenshot.jpg \
-  --quality 85
-
-# Capture specific resource by Terraform address
-dotnet run --project src/tools/Oocx.TfPlan2Md.ScreenshotGenerator -- \
-  --input artifacts/comprehensive-demo.github.html \
-  --output artifacts/resource.png \
-  --target-terraform-resource-id "azurerm_storage_account.example"
-
 # Capture by selector with expanded details
-dotnet run --project src/tools/Oocx.TfPlan2Md.ScreenshotGenerator -- \
+./screenshotgenerator \
   --input artifacts/comprehensive-demo.github.html \
   --output artifacts/firewall.png \
   --target-selector "details:has(summary:has-text('azurerm_firewall'))" \
@@ -555,14 +530,17 @@ dotnet run --project src/tools/Oocx.TfPlan2Md.ScreenshotGenerator -- \
 Generate terminal-style output that mirrors `terraform show` for creating "before tfplan2md" examples. The default output includes ANSI color; add `--no-color` for plain text.
 
 ```bash
+# Build the renderer tool
+go build -o terraformshowrenderer ./tools/terraformshowrenderer
+
 # Colored output
-dotnet run --project src/tools/Oocx.TfPlan2Md.TerraformShowRenderer -- \
-  --input src/tests/Oocx.TfPlan2Md.Tests/TestData/TerraformShow/plan1.json \
+./terraformshowrenderer \
+  --input testdata/plans/plan1.json \
   --output artifacts/terraform-show-plan1.txt
 
 # Plain text (no ANSI)
-dotnet run --project src/tools/Oocx.TfPlan2Md.TerraformShowRenderer -- \
-  --input src/tests/Oocx.TfPlan2Md.Tests/TestData/TerraformShow/plan1.json \
+./terraformshowrenderer \
+  --input testdata/plans/plan1.json \
   --no-color \
   --output artifacts/terraform-show-plan1.nocolor.txt
 ```
@@ -639,9 +617,8 @@ A comprehensive demo is available in the repository:
 docker run --rm -v $(pwd)/examples:/examples oocx/tfplan2md /examples/comprehensive-demo/plan.json \
   --principals /examples/comprehensive-demo/demo-principals.json
 
-# View the demo locally
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
-  examples/comprehensive-demo/plan.json \
+# View the demo locally using the Go binary
+./tfplan2md examples/comprehensive-demo/plan.json \
   --principals examples/comprehensive-demo/demo-principals.json
 ```
 
@@ -705,50 +682,48 @@ See [docs/features/001-resource-specific-templates/specification.md](docs/featur
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Go 1.22+](https://go.dev/dl/)
 - [Docker](https://www.docker.com/) (for container builds and integration tests)
 - [Git](https://git-scm.com/)
+- [golangci-lint](https://golangci-lint.run/usage/install/) (for linting)
 
 ### Getting Started
 
 ```bash
 # Clone the repository
-git clone https://github.com/oocx/tfplan2md.git
-cd tfplan2md
+git clone https://github.com/51nk0r5w1m/tfplan2md.git
+cd tfplan2md/src-go
 
-# Restore tools (including Husky for git hooks)
-dotnet tool restore
+# Build
+go build ./...
 
-# Install git hooks
-dotnet husky install
+# Run tests
+go test -race ./...
+```
 
-# Build and test
-dotnet build
-dotnet test
-
-Tests use **TUnit** with **AwesomeAssertions** for fluent, readable assertions.
+Tests use Go's stdlib `testing` package with `testify/assert` for fluent, readable assertions.
 
 ### Coverage Helpers
 
-Use the helper scripts to summarize coverage from Cobertura output:
+Use the helper scripts to summarize coverage:
 
 ```bash
-# Print overall line/branch coverage
-scripts/coverage-summary.sh
+# Generate coverage report
+go test -race -coverprofile=coverage.out ./...
 
-# List lowest branch coverage classes (default 30, can pass a count)
-scripts/coverage-low-branches.sh 20
-```
+# Print per-function coverage
+go tool cover -func=coverage.out
+
+# Open HTML coverage report
+go tool cover -html=coverage.out
 ```
 
 ### Pre-commit Hooks
 
-This project uses [Husky.Net](https://github.com/alirezanet/Husky.Net) for git hooks:
+This project uses shell-based git hooks managed by the `.hooks/` directory:
 
-- **pre-commit**: Runs `dotnet format --verify-no-changes` and `dotnet build` (enforces code style and quality metrics)
+- **pre-commit**: Runs `gofmt -l` and `go vet ./...` (enforces formatting and detects common issues)
 - **commit-msg**: Validates commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) format
-
-**Code quality checks:** The build enforces cyclomatic complexity (≤15), maintainability index (≥20), and line length (≤160 characters). See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ### Docker Build
 
@@ -801,7 +776,7 @@ Versioning is automated using [Conventional Commits](https://www.conventionalcom
 
 <img src="assets/profile.jpg" alt="Mathias Raacke" width="150" height="150" align="right" style="border-radius: 50%; object-fit: cover; margin-left: 20px;" />
 
-Mathias Raacke develops software professionally since 2000 and uses .net and c# since 2003. He currently works at [Diamant Software](https://www.diamant-software.de) as part of the Platform-Team that provides Azure Landingzones for the Diamant Software SaaS solution. The Diamant Software Azure platform is developed with 100% IaC and Terraform. Before he moved to the Platform Team, he has been working as software-architect at Diamant since 2012. In the past, Mathias used to work as independent trainer and consultant for .NET development and software architecture, and he developed the WPF localization addin NLocalize for Visual Studio with his own former company Neovelop GmbH.
+Mathias Raacke develops software professionally since 2000. He currently works at [Diamant Software](https://www.diamant-software.de) as part of the Platform-Team that provides Azure Landingzones for the Diamant Software SaaS solution. The Diamant Software Azure platform is developed with 100% IaC and Terraform. Before he moved to the Platform Team, he has been working as software-architect at Diamant since 2012. In the past, Mathias used to work as independent trainer and consultant for software development and architecture, and he developed the WPF localization addin NLocalize for Visual Studio with his own former company Neovelop GmbH.
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-mathiasraacke-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/mathiasraacke/) [![GitHub](https://img.shields.io/badge/GitHub-oocx-181717?logo=github&logoColor=white)](https://github.com/oocx) [![YouTube](https://img.shields.io/badge/YouTube-Channel-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/channel/UCksGVtTPuok5ub267_mgVPA) [![Bluesky](https://img.shields.io/badge/Bluesky-oocx-1185FE?logo=bluesky&logoColor=white)](https://bsky.app/profile/oocx.bsky.social) [![Microsoft Certified](https://img.shields.io/badge/Microsoft-Certified-00A4EF?logo=microsoft&logoColor=white)](https://learn.microsoft.com/en-us/users/mathiasraacke/transcript/drl3qhq482qr91p)
 
@@ -814,7 +789,7 @@ I'm GitHub Copilot, the AI pair programmer that helped write 100% of this projec
 For this project, we use a multi-model approach to leverage different AI strengths:
 
 - **Claude Sonnet 4.5** - Primary model for requirements engineering, code review, and technical writing
-- **GPT-5.2-Codex** - Latest Codex model for C# code generation, .NET patterns, and development tasks
+- **GPT-5.2-Codex** - Latest Codex model for Go code generation, idiomatic Go patterns, and development tasks
 - **Claude Opus 4.5** - Reserved for difficult problems and edge cases where other models struggled
 - **GPT-5.2** - General-purpose reasoning, architectural decisions, and complex problem-solving
 - **Gemini 3 Flash** - Fast iteration for task planning, release management, and UAT testing

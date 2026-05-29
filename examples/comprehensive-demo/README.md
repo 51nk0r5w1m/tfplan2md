@@ -29,23 +29,23 @@ This directory contains a handcrafted Terraform plan JSON that demonstrates all 
 
 ```bash
 # Render default report
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
+./tfplan2md \
   examples/comprehensive-demo/plan.json \
   --principals examples/comprehensive-demo/demo-principals.json
 
 # Render with sensitive values
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
+./tfplan2md \
   examples/comprehensive-demo/plan.json \
   --principals examples/comprehensive-demo/demo-principals.json \
   --show-sensitive
 
 # Render summary only
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
+./tfplan2md \
   examples/comprehensive-demo/plan.json \
   --template summary
 
 # Render with debug information
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
+./tfplan2md \
   examples/comprehensive-demo/plan.json \
   --principals examples/comprehensive-demo/demo-principals.json \
   --debug
@@ -79,21 +79,20 @@ docker run --rm -v $(pwd)/examples:/examples oocx/tfplan2md /examples/comprehens
 
 ```bash
 # Default template
-cd ../../
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
+./tfplan2md \
   examples/comprehensive-demo/plan.json \
   --principals examples/comprehensive-demo/demo-principals.json \
   > examples/comprehensive-demo/report.md
 
 # With sensitive values
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
+./tfplan2md \
   examples/comprehensive-demo/plan.json \
   --principals examples/comprehensive-demo/demo-principals.json \
   --show-sensitive \
   > examples/comprehensive-demo/report-with-sensitive.md
 
 # Summary template
-dotnet run --project src/Oocx.TfPlan2Md/Oocx.TfPlan2Md.csproj -- \
+./tfplan2md \
   examples/comprehensive-demo/plan.json \
   --template summary \
   > examples/comprehensive-demo/report-summary.md

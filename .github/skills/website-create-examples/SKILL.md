@@ -86,9 +86,9 @@ If the exact example doesn't exist in artifacts:
    ```
 
 3. **Render to HTML:**
-   Use the HtmlRenderer tool:
+   Use the Go htmlrenderer tool:
    ```bash
-   dotnet run --project src/tools/Oocx.TfPlan2Md.HtmlRenderer \
+   ./htmlrenderer \
      --input artifacts/comprehensive-demo.md \
      --output artifacts/custom-example.github.html \
      --platform github
